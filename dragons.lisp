@@ -4,9 +4,13 @@
 
 (defpackage #:dragons
   (:use #:cl)
+  (:nicknames #:dns)
   (:export #:query
+	   #:iquery
            #:question
+	   #:answer
 	   #:*dns-host*
+	   #:dns-error
            ;; for resource record access
            #:rr-name
            #:rr-type
@@ -113,9 +117,9 @@ and should return the name pointed to by that offset, i.e. it should call decode
     (:all 255)))
 
 (defparameter *class-codes*
-  '((:in 1)
-    (:ch 3)
-    (:hs 4)))
+  '((:in 1) ;; internet 
+    (:ch 3) ;; CHAOS
+    (:hs 4))) ;; HESIOD ??
 
 ;; ----------------------------
 
@@ -216,6 +220,7 @@ so you may read until EOF to extract all the information."))
 
 ;; --------------------------------------------
 
+;; resource record structure 
 (defstruct rr 
   name type class ttl rdata)
 
@@ -337,6 +342,14 @@ so you may read until EOF to extract all the information."))
 	  :class (car (find class *class-codes* :key #'cadr :test #'=)))))
 
 (defun question (name &optional (type :a) (class :in))
+  "Allocate a question to use with QUERY.
+
+NAME ::= a hostname.
+TYPE ::= the type of query.
+CLASS ::= the class of query, almost always :IN (internet).
+"
+  (declare (type string name)
+	   (type symbol type class))
   (list :name name :type type :class class))
 
 ;; --------------------
@@ -392,13 +405,13 @@ so you may read until EOF to extract all the information."))
 
 (defconstant +dns-port+ 53)
 
-(defun query-udp (host questions &key (timeout 1) (opcode :query))
+(defun query-udp (host message &key (timeout 1))
   (let ((socket (usocket:socket-connect host +dns-port+
 					:protocol :datagram
 					:element-type '(unsigned-byte 8))))
     (let ((buffer
 	   (flexi-streams:with-output-to-sequence (s)
-	     (encode-message s (message questions :opcode opcode)))))
+	     (encode-message s message)))) 
       (usocket:socket-send socket buffer (length buffer)))
     (when (usocket:wait-for-input socket 
 				  :timeout timeout
@@ -414,13 +427,13 @@ so you may read until EOF to extract all the information."))
 		       (decode-name v)))))
 	      (decode-message s))))))))
 
-(defun query-tcp (host questions &key (timeout 1) (opcode :query))
+(defun query-tcp (host message &key (timeout 1))
   (let ((socket (usocket:socket-connect host +dns-port+
 					:protocol :stream
 					:element-type '(unsigned-byte 8))))
     (let ((buffer
 	   (flexi-streams:with-output-to-sequence (s)
-	     (encode-message s (message questions :opcode opcode)))))
+	     (encode-message s message))))
       (nibbles:write-ub16/be (length buffer) (usocket:socket-stream socket))
       (write-sequence buffer (usocket:socket-stream socket))
       (force-output (usocket:socket-stream socket)))
@@ -441,13 +454,18 @@ so you may read until EOF to extract all the information."))
 (defvar *dns-host* nil
   "Address of default DNS.")
 
-(defun query (questions &key host (timeout 1) (protocol :udp) (opcode :query))
+(defun query (questions &key host (timeout 1) (protocol :udp))
   "Send a DNS query to the DNS specified by HOST or *DNS-HOST*.
 
 QUESTIONS ::= either a list of questions, as returned by QUESTION, a single question or a string, which is interpreted as a standard :A/:IN question.
 TIMEOUT ::= time to wait for a reply.
 PROTOCOL ::= protocol to send the quest, :UDP or :TCP.
-OPCODE ::= :QUERY for standard queries, :IQUERY for inverse queries. Not all DNS servers support inverse queries.
+
+Returns (values answer* authority* addtitional* question*) with
+ANSWER, AUTHORITY, ADDITIONAL ::= resource record (RR) instances
+QUESTION ::= question instance.
+
+The resource records contain different data depending on the type/class of resource, access the RDATA slot for the data. 
 "
   (cond
     ((null *dns-host*)
@@ -461,25 +479,78 @@ OPCODE ::= :QUERY for standard queries, :IQUERY for inverse queries. Not all DNS
   (cond 
     ((stringp questions) 
      ;; a string was specified as the question. assume it's an address query
-     (setf questions (list (question questions))))
+     (setf questions (list (question questions))))    
     ((and (listp questions) (not (listp (car questions))))
      ;; a single questions was provided. wrap in a list 
      (setf questions (list questions))))
     
-  (let ((message 
-	 (ecase protocol
-	   (:udp (query-udp host questions :timeout timeout :opcode opcode))
-	   (:tcp (query-tcp host questions :timeout timeout :opcode opcode)))))
-    (unless message
-      (error "Request timed out"))
-    ;; if the header stat is not OK then an error occured
-    (unless (eq (header-rcode (message-header message)) :ok)
-      (error 'dns-error :stat (header-rcode (message-header message))))
-    (values (message-answers message)
-	    (message-authorities message)
-	    (message-additionals message)
-	    (message-questions message))))
+  (let ((qmessage (message questions)))
+    (let ((message 
+	   (ecase protocol
+	     (:udp (query-udp host qmessage :timeout timeout))
+	     (:tcp (query-tcp host qmessage :timeout timeout)))))
+      (unless message
+	(error "Request timed out"))
+      ;; if the header stat is not OK then an error occured
+      (unless (eq (header-rcode (message-header message)) :ok)
+	(error 'dns-error :stat (header-rcode (message-header message))))
+      (values (message-answers message)
+	      (message-authorities message)
+	      (message-additionals message)
+	      (message-questions message)))))
+
+(defun answer (rdata &optional (type :a) (class :in))
+  (make-rr :name ""
+	   :type type
+	   :class class
+	   :ttl 0
+	   :rdata rdata))
+
+(defun iquery (answers &key host (timeout 1) (protocol :udp))
+  "Send a DNS inverse query to the DNS specified by HOST or *DNS-HOST*.
+
+ANSWERS ::= a list of answers, as returned by ANSWER.
+TIMEOUT ::= time to wait for a reply.
+PROTOCOL ::= protocol to send the quest, :UDP or :TCP.
+
+Returns (values answer* authority* addtitional* question*) with
+ANSWER, AUTHORITY, ADDITIONAL ::= resource record (RR) instances
+QUESTION ::= question instance.
+
+The resource records contain different data depending on the type/class of resource, access the RDATA slot for the data. 
+"
+  (cond
+    ((null *dns-host*)
+     (if host
+	 (setf *dns-host* host)
+	 (error "Must provide a DNS address or set *DNS-HOST*")))
+    ((null host) 
+     (setf host *dns-host*)))
+
+  (when (rr-p answers) 
+    (setf answers (list answers)))
     
+  (let ((qmessage (message nil :opcode :iquery 
+			   :answers answers)))
+    (let ((message 
+	   (ecase protocol
+	     (:udp (query-udp host qmessage :timeout timeout))
+	     (:tcp (query-tcp host qmessage :timeout timeout)))))
+      (unless message
+	(error "Request timed out"))
+      ;; if the header stat is not OK then an error occured
+      (unless (eq (header-rcode (message-header message)) :ok)
+	(error 'dns-error :stat (header-rcode (message-header message))))
+      (values (message-answers message)
+	      (message-authorities message)
+	      (message-additionals message)
+	      (message-questions message)))))
+
+
+
+    
+
+
 ;; ------------------------------------------
 
 ;; for testing purposes only 

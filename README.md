@@ -10,6 +10,25 @@ It returns `(values answers authorities additionals questions)`.
 
 The ANSWERS, AUTHORITIES and ADDITIONALS are represented as  resource record structures (Lisp name RR).
 
+### 2.1 Queries
+
+Query your DNS using `QUERY` function, it accepts a one or more questions to be answered.
+
+```
+CL-USER> (dragons:query (dragons:question "google.com"))
+```
+
+### 2.2 Inverse queries
+
+Use `IQUERY` function with one or more answers. The DNS will return the questions which result with those answers.
+Not all DNS servers support inverse queries.
+
+```
+CL-USER> (dragons:iquery (dragons:answer #(216 258 10 100)))
+```
+
+### 2.3 Example
+
 ```
 CL-USER> (query (list (question "google.com")) :host "10.1.100.100")
 (#S(DRAGONS::RR
