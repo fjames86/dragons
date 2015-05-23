@@ -3,7 +3,15 @@
 
 
 (defpackage #:dragons
-  (:use #:cl))
+  (:use #:cl)
+  (:export #:query
+           #:question
+           ;; for resource record access
+           #:rr-name
+           #:rr-type
+           #:rr-class
+           #:rr-ttl
+           #:rr-rdata))
 
 (in-package #:dragons)
 
@@ -22,7 +30,9 @@
 
 ;; -------------------------
 
-(defparameter *resolve-pointer-hook* nil)
+(defparameter *resolve-pointer-hook* nil
+  "This should be bound to a function accepting a single parameter, offset, which is the offset back into the original buffer
+and should return the name pointed to by that offset, i.e. it should call decode-name at that point.")
 
 (defun encode-label (string stream)
   (encode-string string stream))
@@ -37,6 +47,7 @@
 	 (values (babel:octets-to-string v) 
 		 nil)))
       (t       
+       ;; this is a pointer, call into the hook to decode the name 
        (let ((offset (logior (ash (logand len 63) 8)
 			     (read-byte stream))))
 	 (values (funcall *resolve-pointer-hook* offset)
@@ -94,10 +105,8 @@
     (:minfo 14)
     (:mx 15)
     (:txt 16)
-    (:srv 33)))
-
-(defparameter *qtype-codes*
-  '((:axfr 252)
+    (:srv 33)
+    (:axfr 252)
     (:mailb 253)
     (:maila 254)
     (:all 255)))
@@ -109,10 +118,13 @@
 
 ;; ----------------------------
 
-(defgeneric encode-rdata (type data stream))
-(defgeneric decode-rdata (type stream))
+(defgeneric encode-rdata (type data stream)
+  (:documentation "Encode a object of specified type to the stream. TYPE should be a keyword in *TYPE-CODES*."))
+(defgeneric decode-rdata (type stream)
+  (:documentation "Decode an object of specified type from the stream. The stream contains all the data for the object,
+so you may read until EOF to extract all the information."))
 
-;; default methods leave data untouched
+;; default methods leave data untouched and assume the data is just a vector
 (defmethod encode-rdata (type data stream)
   (write-sequence data stream))
 (defmethod decode-rdata (type stream)
@@ -123,6 +135,7 @@
       (write-byte b s))))
 
 ;; ------- cname -----
+
 (defmethod encode-rdata ((type (eql :cname)) data stream)
   (encode-name data stream))
 
@@ -152,6 +165,7 @@
 
 ;; ---------- a -------------
 
+;; address.
 (defmethod encode-rdata ((type (eql :a)) data stream)
   (write-sequence 
    (etypecase data
@@ -159,10 +173,7 @@
      (vector data))
    stream))
 
-(defmethod decode-rdata ((type (eql :a)) stream)
-  (let ((v (nibbles:make-octet-vector 4)))
-    (read-sequence v stream)
-    v))
+;; don't provide a method for decoding Address types because it's just a vector which is the same as the default method
 
 ;; ----------- ns -----------------
 
@@ -172,7 +183,6 @@
 (defmethod decode-rdata ((type (eql :ns)) stream)
   (decode-name stream))
 
-
 ;; ----------- txt ----------------
 
 (defmethod encode-rdata ((type (eql :txt)) data stream)
@@ -180,6 +190,28 @@
 
 (defmethod decode-rdata ((type (eql :txt)) stream)
   (decode-string stream))
+
+;; ------------- srv ----------------
+
+(defmethod encode-rdata ((type (eql :srv)) data stream)
+  (let ((priority (getf data :priority))
+	(weight (getf data :weight))
+	(port (getf data :port))
+	(target (getf data :target)))
+    (nibbles:write-ub16/be priority stream)
+    (nibbles:write-ub16/be weight stream)
+    (nibbles:write-ub16/be port stream)
+    (encode-name target stream)))
+
+(defmethod decode-rdata ((type (eql :srv)) stream)
+  (let ((priority (nibbles:read-ub16/be stream))
+	(weight (nibbles:read-ub16/be stream))
+	(port (nibbles:read-ub16/be stream))
+	(target (decode-name stream)))
+    (list :priority priority
+	  :weight weight
+	  :port port
+	  :target target)))
 
 ;; --------------------------------------------
 
@@ -223,8 +255,12 @@
 		   :ttl ttl
 		   :rdata (decode-rdata tname s)))))))
 
-
 ;;; -----------------------------
+
+(define-condition dns-error (error)
+  ((stat :initarg :stat :reader dns-error-stat))
+  (:report (lambda (c stream)
+	     (format stream "DNS-ERROR: ~A" (dns-error-stat c)))))
 
 (defstruct header 
   id qr opcode rcode qcount acount ncount rcount)
@@ -355,13 +391,13 @@
 
 (defconstant +dns-port+ 53)
 
-(defun query-udp (host questions &key (timeout 1))
+(defun query-udp (host questions &key (timeout 1) (opcode :query))
   (let ((socket (usocket:socket-connect host +dns-port+
 					:protocol :datagram
 					:element-type '(unsigned-byte 8))))
     (let ((buffer
 	   (flexi-streams:with-output-to-sequence (s)
-	     (encode-message s (message questions)))))
+	     (encode-message s (message questions :opcode opcode)))))
       (usocket:socket-send socket buffer (length buffer)))
     (when (usocket:wait-for-input socket 
 				  :timeout timeout
@@ -377,13 +413,13 @@
 		       (decode-name v)))))
 	      (decode-message s))))))))
 
-(defun query-tcp (host questions &key (timeout 1))
+(defun query-tcp (host questions &key (timeout 1) (opcode :query))
   (let ((socket (usocket:socket-connect host +dns-port+
 					:protocol :stream
 					:element-type '(unsigned-byte 8))))
     (let ((buffer
 	   (flexi-streams:with-output-to-sequence (s)
-	     (encode-message s (message questions)))))
+	     (encode-message s (message questions :opcode opcode)))))
       (nibbles:write-ub16/be (length buffer) (usocket:socket-stream socket))
       (write-sequence buffer (usocket:socket-stream socket))
       (force-output (usocket:socket-stream socket)))
@@ -404,12 +440,13 @@
 (defvar *dns-host* nil
   "Address of default DNS.")
 
-(defun query (questions &key host (timeout 1) (protocol :udp))
+(defun query (questions &key host (timeout 1) (protocol :udp) (opcode :query))
   "Send a DNS query to the DNS specified by HOST or *DNS-HOST*.
 
-QUESTIONS ::= a list of questions, as returned by QUESTION.
+QUESTIONS ::= either a list of questions, as returned by QUESTION, a single question or a string, which is interpreted as a standard :A/:IN question.
 TIMEOUT ::= time to wait for a reply.
 PROTOCOL ::= protocol to send the quest, :UDP or :TCP.
+OPCODE ::= :QUERY for standard queries, :IQUERY for inverse queries. Not all DNS servers support inverse queries.
 "
   (cond
     ((null *dns-host*)
@@ -418,9 +455,27 @@ PROTOCOL ::= protocol to send the quest, :UDP or :TCP.
 	 (error "Must provide a DNS address or set *DNS-HOST*")))
     ((null host) 
      (setf host *dns-host*)))
-  (ecase protocol
-    (:udp (query-udp host questions :timeout timeout))
-    (:tcp (query-tcp host questions :timeout timeout))))
+
+  ;; allow questions to be specified by string
+  (cond 
+    ((stringp questions) 
+     ;; a string was specified as the question. assume it's an address query
+     (setf questions (list (question questions))))
+    ((and (listp questions) (not (listp (car questions))))
+     ;; a single questions was provided. wrap in a list 
+     (setf questions (list questions))))
+    
+  (let ((message 
+	 (ecase protocol
+	   (:udp (query-udp host questions :timeout timeout :opcode opcode))
+	   (:tcp (query-tcp host questions :timeout timeout :opcode opcode)))))
+    ;; if the header stat is not OK then an error occured
+    (unless (eq (header-rcode (message-header message)) :ok)
+      (error 'dns-error :stat (header-rcode (message-header message))))
+    (values (message-answers message)
+	    (message-authorities message)
+	    (message-additionals message)
+	    (message-questions message))))
     
 ;; ------------------------------------------
 
