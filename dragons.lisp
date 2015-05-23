@@ -6,6 +6,7 @@
   (:use #:cl)
   (:export #:query
            #:question
+	   #:*dns-host*
            ;; for resource record access
            #:rr-name
            #:rr-type
@@ -469,6 +470,8 @@ OPCODE ::= :QUERY for standard queries, :IQUERY for inverse queries. Not all DNS
 	 (ecase protocol
 	   (:udp (query-udp host questions :timeout timeout :opcode opcode))
 	   (:tcp (query-tcp host questions :timeout timeout :opcode opcode)))))
+    (unless message
+      (error "Request timed out"))
     ;; if the header stat is not OK then an error occured
     (unless (eq (header-rcode (message-header message)) :ok)
       (error 'dns-error :stat (header-rcode (message-header message))))
@@ -479,10 +482,11 @@ OPCODE ::= :QUERY for standard queries, :IQUERY for inverse queries. Not all DNS
     
 ;; ------------------------------------------
 
-(defun pack (encoder obj)
-  (flexi-streams:with-output-to-sequence (s)
-    (funcall encoder s obj)))
+;; for testing purposes only 
+;; (defun pack (encoder obj)
+;;   (flexi-streams:with-output-to-sequence (s)
+;;     (funcall encoder s obj)))
 
-(defun unpack (decoder buffer)
-  (flexi-streams:with-input-from-sequence (s buffer)
-    (funcall decoder s)))
+;; (defun unpack (decoder buffer)
+;;   (flexi-streams:with-input-from-sequence (s buffer)
+;;     (funcall decoder s)))
