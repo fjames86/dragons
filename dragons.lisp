@@ -420,6 +420,9 @@ CLASS ::= the class of query, almost always :IN (internet).
 	(multiple-value-bind (%buffer count remote-host remote-port) (usocket:socket-receive socket buffer 512)
 	  (declare (ignore %buffer remote-host remote-port))
 ;;	  (format t "~A:~A ~A ~%~A~%" remote-host remote-port count (subseq buffer 0 count))
+	  (when (or (< count 0) (= count #xffffffff)) 
+	    ;; this is a workaround for behaviour I've seen in SBCL-Win32-x64 and LispWorks
+	    (error "socket-receive error"))
 	  (flexi-streams:with-input-from-sequence (s buffer :end count)
 	    (let ((*resolve-pointer-hook* 
 		   (lambda (offset)
