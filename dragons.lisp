@@ -233,7 +233,9 @@ so you may read until EOF to extract all the information."))
     ;; name
     (encode-name name stream)
     ;; type
-    (nibbles:write-ub16/be (cadr (assoc type *type-codes*)) stream)
+    (nibbles:write-ub16/be (or (cadr (assoc type *type-codes*))
+			       (error "Unknown TYPE ~A" type))
+			   stream)
     ;; class
     (nibbles:write-ub16/be (cadr (assoc class *class-codes*)) stream)
     ;; ttl

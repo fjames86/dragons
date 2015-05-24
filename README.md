@@ -1,8 +1,8 @@
 # dragons
-Common Lisp DNS client.
+This is a Common Lisp DNS client. You can use it to query a DNS server for information, typically to resolve hostnames into IP addresses.
 
 ## 1. Introduction
-DNS is the standard system for mapping IP addresses to hostnames.
+DNS is the standard system for mapping IP addresses to hostnames. It can also be used for other purposes, such as SRV records which can be used by clients to locate services on the network.
 
 ## 2. Usage
 The main function is `QUERY` which accepts a question or list of questions to send to the DNS.
@@ -10,7 +10,26 @@ It returns `(values answers authorities additionals questions)`.
 
 The ANSWERS, AUTHORITIES and ADDITIONALS are represented as  resource record structures (Lisp name RR).
 
-### 2.1 Queries
+### 2.1 Resource records
+These are how the DNS returns information from the query. 
+```
+(defstruct rr 
+  name          ;; string naming the resource
+  type          ;; symbol naming the type of resource
+  class         ;; symbol naming the class of resource, always :IN (internet)
+  ttl           ;; time to live, number of seconds the record should be considered valid
+  rdata)        ;; variable data. Type of data depends on TYPE slot.
+```
+
+#### 2.1.1 Resource types
+
+* :A (address) a octet vector storing the IP address
+* :CNAME (canonical name) a string naming an alias for the name in the record
+* :SRV (service record) a plist with fields :PRIORITY :PORT :WEIGHT :TARGET
+
+For all other types the RDATA slot contains an opaque octet vector as returned by the DNS response. 
+
+### 2.2 Queries
 
 Query your DNS using `QUERY` function, it accepts a one or more questions to be answered.
 
@@ -18,7 +37,7 @@ Query your DNS using `QUERY` function, it accepts a one or more questions to be 
 CL-USER> (dragons:query (dragons:question "google.com"))
 ```
 
-### 2.2 Inverse queries
+### 2.3 Inverse queries
 
 Use `IQUERY` function with one or more answers. The DNS will return the questions which result with those answers.
 Not all DNS servers support inverse queries.
@@ -27,7 +46,7 @@ Not all DNS servers support inverse queries.
 CL-USER> (dragons:iquery (dragons:answer #(216 258 10 100)))
 ```
 
-### 2.3 Example
+### 2.4 Example
 
 ```
 CL-USER> (query (list (question "google.com")) :host "10.1.100.100")
@@ -89,7 +108,17 @@ NIL
 ((:NAME "_kerberos._tcp.my.domain.com" :TYPE :SRV :CLASS :IN))
 ```
 
-## 3. License
+## 3. Errors
+If the DNS server returns an error status, a `DNS-ERROR` will be signalled. If UDP is used and no response
+is received within `TIMEOUT` seconds, an error indicating a timeout has occured is signalled.
+
+## 4. TODO
+- [x] Support SRV queries.
+- [ ] Decode all the flags properly.
+- [ ] Some sort of cache, possibly persistent.
+- [ ] Long term: write a DNS server.
+
+## 5. License
 Licensed under the terms of the MIT License.
 
 Frank James 
