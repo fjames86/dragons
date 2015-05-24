@@ -21,7 +21,7 @@ These are how the DNS returns information from the query.
   rdata)        ;; variable data. Type of data depends on TYPE slot.
 ```
 
-#### 2.1.1 Resource types
+#### 2.1.1 Resource type RDATA 
 
 * :A (address) a octet vector storing the IP address
 * :CNAME (canonical name) a string naming an alias for the name in the record
