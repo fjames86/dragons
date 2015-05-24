@@ -237,7 +237,7 @@ so you may read until EOF to extract all the information."))
     ;; class
     (nibbles:write-ub16/be (cadr (assoc class *class-codes*)) stream)
     ;; ttl
-    (nibbles:write-ub32/be ttl stream)
+    (nibbles:write-sb32/be ttl stream)
     ;; rdlength 
     (nibbles:write-ub16/be (length rdata) stream)
     ;; rdata
@@ -247,7 +247,7 @@ so you may read until EOF to extract all the information."))
   (let* ((name (decode-name stream))
 	 (type (nibbles:read-ub16/be stream))
 	 (class (nibbles:read-ub16/be stream))
-	 (ttl (nibbles:read-ub32/be stream)))
+	 (ttl (nibbles:read-sb32/be stream)))
     (let ((len (nibbles:read-ub16/be stream))
 	  (tname (car (find type *type-codes*
 			    :key #'cadr :test #'=))))
