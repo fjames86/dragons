@@ -6,6 +6,7 @@
   :author "Frank James <frank.a.james@gmail.com>"
   :description "An DNS client."
   :license "MIT"
+  :version "1.0.3"
   :components
   ((:file "dragons"))
   :depends-on (:usocket :flexi-streams :nibbles :babel))
