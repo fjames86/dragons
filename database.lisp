@@ -131,12 +131,12 @@
 	     (encode-record stream rr (or expiration #xffffffffffffffff))
 	     ;; increment the seqno
 	     (inc-db-seqno)
-	     (return-from add-record)))
+	     (return-from add-record rr)))
 	  (t 
 	   ;; this record is inactive, write the new one
 	   (file-position stream (* i +block-size+))
 	   (encode-record stream rr (or expiration #xffffffffffffffff))
-	   (return-from add-record))))))
+	   (return-from add-record rr))))))
   ;; not there, no spare entries. need to remap and grow
   (let ((c (db-count *db*)))
     (close-db)
@@ -146,7 +146,8 @@
       (file-position (db-stream *db*) (* c +block-size+))
       (encode-record (db-stream *db*) rr #xffffffffffffffff)
       ;; increment the seqno
-      (inc-db-seqno))))
+      (inc-db-seqno))
+    rr))
 
 (defun insert-record (name rdata &optional (type :a) (ttl 300) (class :in))
   "Insert a static record into the database."
@@ -187,40 +188,43 @@
 	     ;; entry found
 	     (return-from find-record entry))))))))
 
-(defun remove-record (rr &optional test)
+(defun remove-record (name rdata &optional (type :a) (ttl 300) (class :in))
   "Remove the record from the database."
-  (declare (type rr rr))
-  (open-db)
-  (pounds:with-locked-mapping ((db-stream *db*))
-    ;; iterate over the records
-    (do ((i 1 (1+ i))
-	 (count (db-count *db*))
-	 (stream (db-stream *db*))
-	 (now (get-universal-time)))
-	((= i count))
-      (file-position stream (* i +block-size+))
-      (multiple-value-bind (entry expiry) (decode-record stream)
-	(cond
-	  ((and entry (< expiry now))
-	   ;; active but expired, delete the entry 
-	   (file-position stream (* i +block-size+))
-	   (nibbles:write-ub32/be 0 stream)
-	   (inc-db-seqno)
-	   nil)
-	  (entry
-	   ;; there is an entry, check if it is eql
-	   (when (and (eq (rr-type rr) (rr-type entry))
-		      (eq (rr-class rr) (rr-class entry))
-		      (string-equal (rr-name rr) (rr-name entry))
-		      (if (rr-rdata rr)
-			  (funcall (or test (default-test rr))
-				   (rr-rdata rr) (rr-rdata entry))
-			  t))
-	     ;; entry found, delete it
+  (let ((rr (make-rr :name name
+		     :type type
+		     :class class
+		     :ttl ttl
+		     :rdata rdata)))
+    (declare (type rr rr))
+    (open-db)
+    (pounds:with-locked-mapping ((db-stream *db*))
+      ;; iterate over the records
+      (do ((i 1 (1+ i))
+	   (count (db-count *db*))
+	   (stream (db-stream *db*))
+	   (now (get-universal-time)))
+	  ((= i count))
+	(file-position stream (* i +block-size+))
+	(multiple-value-bind (entry expiry) (decode-record stream)
+	  (cond
+	    ((and entry (< expiry now))
+	     ;; active but expired, delete the entry 
 	     (file-position stream (* i +block-size+))
 	     (nibbles:write-ub32/be 0 stream)
 	     (inc-db-seqno)
-	     (return-from remove-record))))))))
+	     nil)
+	    (entry
+	     ;; there is an entry, check if it is eql
+	     (when (and (eq (rr-type rr) (rr-type entry))
+			(eq (rr-class rr) (rr-class entry))
+			(string-equal (rr-name rr) (rr-name entry))
+			(funcall (default-test rr) 
+				 (rr-rdata rr) (rr-rdata entry)))
+	       ;; entry found, delete it
+	       (file-position stream (* i +block-size+))
+	       (nibbles:write-ub32/be 0 stream)
+	       (inc-db-seqno)
+	       (return-from remove-record)))))))))
 
 
 (defun list-records ()  

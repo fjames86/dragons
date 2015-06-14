@@ -112,13 +112,31 @@ NIL
 If the DNS server returns an error status, a `DNS-ERROR` will be signalled. If UDP is used and no response
 is received within `TIMEOUT` seconds, an error indicating a timeout has occured is signalled.
 
-## 4. TODO
+## 4. Database
+To reduce the number of queries that must be made over the network, a persistent cache is used
+to store records. This file is created by the file named by `*DATABASE-PATH*` its first usage.
+By default this is named by `(merge-pathnames "dragons.dat" (user-homedir-pathname))`, you should change this
+before calling any functions to change its location. 
+
+### 4.1 Inserting/deleting records
+The result of any DNS query is automatically inserted into the database, it will be deleted once its TTL has 
+expired. You may insert permanant entries:
+```
+CL-USER> (dns:insert-record "foo.com" "bar.com" :cname)
+```
+
+You may delete an entry
+```
+CL-USER> (dns:remove-record "foo.com" "bar.com" :cname)
+```
+
+## 5. TODO
 - [x] Support SRV queries.
 - [ ] Decode all the flags properly.
-- [ ] Some sort of cache, possibly persistent.
+- [x] Some sort of cache, possibly persistent.
 - [ ] Long term: write a DNS server.
 
-## 5. License
+## 6. License
 Licensed under the terms of the MIT License.
 
 Frank James 
