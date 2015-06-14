@@ -4,10 +4,14 @@
 (asdf:defsystem :dragons
   :name "dragons"
   :author "Frank James <frank.a.james@gmail.com>"
-  :description "An DNS client."
+  :description "A DNS client."
   :license "MIT"
-  :version "1.0.3"
+  :version "1.1.0"
+  :serial t
   :components
-  ((:file "dragons"))
-  :depends-on (:usocket :flexi-streams :nibbles :babel))
+  ((:file "package")
+   (:file "structures")
+   (:file "database")
+   (:file "client"))
+  :depends-on (:usocket :flexi-streams :nibbles :babel :pounds))
 
