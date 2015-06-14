@@ -17,10 +17,10 @@
 
 (defun read-db-header ()
   (let ((stream (db-stream *db*)))
-  (file-position stream 0)
-  (list :count (nibbles:read-ub32/be stream)
-	:seqno (nibbles:read-ub32/be stream)
-	:version (nibbles:read-ub32/be stream)))
+    (file-position stream 0)
+    (list :count (nibbles:read-ub32/be stream)
+	  :seqno (nibbles:read-ub32/be stream)
+	  :version (nibbles:read-ub32/be stream))))
 
 (defun read-db-count ()
   (let ((header (read-db-header)))
@@ -61,7 +61,8 @@
 	    (nibbles:write-ub32/be 1 (db-stream *db*))
 	    (nibbles:write-ub32/be +db-version+ (db-stream *db*)))
 	   ((not (= +db-version+ (getf header :version)))
-	    (error "Database version mismatch."))
+	    (close-db)
+	    (error "Database version ~A mismatch with ~A." (getf header :version) +db-version+))
 	   ((= count real-count) 
 	    count)
 	   ((< count real-count)
@@ -92,12 +93,15 @@
 	(values rr expiry)))))
 
 (defun default-test (rr)
-  (case (rr-rdata rr)
+  (declare (type rr rr))
+  (typecase (rr-rdata rr)
     (string #'string-equal)
     (vector #'equalp)
     (otherwise #'eql)))
 
+
 (defun add-record (rr &optional expiration test)
+  (declare (type rr rr))
   (open-db)
   (pounds:with-locked-mapping ((db-stream *db*))
     ;; iterate over the records
@@ -114,7 +118,7 @@
 	   (file-position stream (* i +block-size+))
 	   (nibbles:write-ub32/be 0 stream))
 	  (entry
-	   ;; there is an entry, check if it is equl
+	   ;; there is an entry, check if it is equal
 	   (when (and (eq (rr-type rr) (rr-type entry))
 		      (eq (rr-class rr) (rr-class entry))
 		      (string-equal (rr-name rr) (rr-name entry))
@@ -142,10 +146,19 @@
       (file-position (db-stream *db*) (* c +block-size+))
       (encode-record (db-stream *db*) rr #xffffffffffffffff)
       ;; increment the seqno
-      (inc-db-seqno)))))
+      (inc-db-seqno))))
 
+(defun insert-record (name rdata &optional (type :a) (ttl 300) (class :in))
+  "Insert a static record into the database."
+  (add-record (make-rr :name name
+		       :type type
+		       :class class
+		       :ttl ttl
+		       :rdata rdata)
+	      #xffffffffffffffff))
 
 (defun find-record (rr &optional test)
+  (declare (type rr rr))
   (open-db)
   (pounds:with-locked-mapping ((db-stream *db*))
     ;; iterate over the records
@@ -175,6 +188,8 @@
 	     (return-from find-record entry))))))))
 
 (defun remove-record (rr &optional test)
+  "Remove the record from the database."
+  (declare (type rr rr))
   (open-db)
   (pounds:with-locked-mapping ((db-stream *db*))
     ;; iterate over the records

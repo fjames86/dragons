@@ -18,11 +18,9 @@
            #:rr-ttl
            #:rr-rdata
 	   
-	   ;; database 
+	   ;; public database operators
 	   #:*database-path*
 	   #:list-records
-	   #:find-record
 	   #:remove-record
-	   #:add-record
-
+	   #:insert-record
 	   ))

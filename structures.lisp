@@ -6,9 +6,9 @@
 ;; -------------------------
 
 (defun encode-string (string stream)
-  (let ((len (length string)))
-    (write-byte len stream)
-    (write-sequence (babel:string-to-octets string) stream)))
+  (let ((octets (babel:string-to-octets string)))
+    (write-byte (length octets) stream)
+    (write-sequence octets stream)))
 
 (defun decode-string (stream)
   (let ((len (read-byte stream)))
@@ -223,10 +223,12 @@ so you may read until EOF to extract all the information."))
     (nibbles:write-ub16/be (cadr (assoc class *class-codes*)) stream)
     ;; ttl
     (nibbles:write-sb32/be ttl stream)
-    ;; rdlength 
-    (nibbles:write-ub16/be (length rdata) stream)
-    ;; rdata
-    (encode-rdata type rdata stream)))
+    (let ((octets (flexi-streams:with-output-to-sequence (s)
+		    (encode-rdata type rdata s))))
+      ;; rdlength 
+      (nibbles:write-ub16/be (length octets) stream)
+      ;; rdata
+      (write-sequence octets stream))))
 
 (defun decode-rr (stream)
   (let* ((name (decode-name stream))
