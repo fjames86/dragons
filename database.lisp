@@ -42,6 +42,7 @@
      ;; already open, check the real count matches the count we think
      (let ((real-count (read-db-count)))
        (unless (= real-count (db-count *db*))
+	 ;; count doesn't match, we must remap
 	 (close-db)
 	 (open-db real-count))))
     (t 
