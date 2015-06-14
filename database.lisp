@@ -12,7 +12,14 @@
 
 (defvar *db* nil)
 (defvar *database-path* (merge-pathnames "dragons.dat" (user-homedir-pathname)))
-(defconstant +block-size+ 128)
+
+;; FIXME: this is not guaranteed to be large enough to hold a record. 
+;; names can be up to 255 characters, the record itself larger still.
+;; Reserving e.g. 1k per entry seems excessive (or is it?)
+;; Otherwise we'd need to be able to store variable length records, which is a pain.
+(defconstant +block-size+ 1024)
+
+;; in case the binary formats change we can detect incompatibilities
 (defconstant +db-version+ 1)
 
 (defun read-db-header ()
