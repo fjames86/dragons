@@ -1,14 +1,9 @@
 ;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
 ;;;; This code is licensed under the MIT license.
 
+;;; This file defines the shared database used to store records.
 
 (in-package #:dragons)
-
-;; ;; this file defines a database for caching resource records.
-;; ;; Can also be used as the source of a DNS server.
-
-;; (defstruct db 
-;;   mapping stream count)
 
 (defvar *db* nil)
 (defvar *database-path* (merge-pathnames "dragons.dat" (user-homedir-pathname)))
