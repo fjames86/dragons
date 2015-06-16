@@ -106,7 +106,6 @@ The resource records contain different data depending on the type/class of resou
 					    :rdata nil))))
 	      (when rr (list rr))))))
     (when answers
-      (break)
       (return-from query answers)))
 
 
