@@ -6,7 +6,7 @@
   :author "Frank James <frank.a.james@gmail.com>"
   :description "A DNS client."
   :license "MIT"
-  :version "1.1.0"
+  :version "1.1.1"
   :serial t
   :components
   ((:file "package")
