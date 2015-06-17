@@ -100,13 +100,12 @@ The resource records contain different data depending on the type/class of resou
 	 (loop :for question :in questions
 	    :nconc
 	    (let ((rr (find-record (make-rr :name (getf question :name)
-					    :type (getf question :type)
-					    :class (getf question :class)
-					    :ttl 0
-					    :rdata nil))))
+                                        :type (getf question :type)
+                                        :class (getf question :class)
+                                        :ttl 0
+                                        :rdata nil))))
 	      (when rr (list rr))))))
     (when answers
-      (break)
       (return-from query answers)))
 
 
