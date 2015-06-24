@@ -66,13 +66,12 @@
 
 (defun remove-record (name &optional (type :a) (class :in))
   (open-dn-db)
-  (setf (pounds.db:find-entry (make-rr :name name
-                                       :type type
-                                       :class class)
-                              *db*
-                              :test #'rr-eql
-                              :key #'car)
-        nil))
+  (pounds.db:remove-entry (make-rr :name name
+				   :type type
+				   :class class)
+			  *db*
+			  :test #'rr-eql
+			  :key #'car))
 
 ;; we define our own wrapper to iterate over the entries to ensure we delete
 ;; those entries once they have expired.
@@ -80,7 +79,7 @@
   (alexandria:with-gensyms (gnow gvar)
     `(let ((,gnow (get-universal-time)))
        (pounds.db:doentries (,gvar *db*)
-         (if (and ,gvar (< (cadr ,gvar) ,gnow))
+         (if (< (cadr ,gvar) ,gnow)
              (pounds.db:clear-entry)
              (let ((,var (car ,gvar)))
                ,@body))))))
