@@ -203,6 +203,29 @@ so you may read until EOF to extract all the information."))
 	  :port port
 	  :target target)))
 
+;; -------------------------------------------
+
+;; see section 3.3.13
+
+(defmethod encode-rdata ((type (eql :soa)) data stream)
+  (encode-name (getf data :mname) stream)
+  (encode-name (getf data :rname) stream)
+  (nibbles:write-ub32/be (getf data :serial) stream)
+  (nibbles:write-ub32/be (getf data :refresh) stream)
+  (nibbles:write-ub32/be (getf data :retry) stream)
+  (nibbles:write-ub32/be (getf data :expire) stream)
+  (nibbles:write-ub32/be (getf data :minumum) stream))
+
+(defmethod decode-rdata ((type (eql :soa)) stream)
+  (list :mname (decode-name stream)
+        :rname (decode-name stream)
+        :serial (nibbles:read-ub32/be stream)
+        :refresh (nibbles:read-ub32/be stream)
+        :retry (nibbles:read-ub32/be stream)
+        :expire (nibbles:read-ub32/be stream)
+        :minimum (nibbles:read-ub32/be stream)))
+        
+  
 ;; --------------------------------------------
 
 ;; resource record structure 
