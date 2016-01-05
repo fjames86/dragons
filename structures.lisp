@@ -33,16 +33,16 @@ and should return the name pointed to by that offset, i.e. it should call decode
       ((= len 0) (values nil nil))
       ((<= len 63)
        (let ((v (nibbles:make-octet-vector len)))
-	 (read-sequence v stream)
-	 (values (babel:octets-to-string v) 
-		 nil)))
+         (read-sequence v stream)
+         (values (babel:octets-to-string v) 
+                 nil)))
       (t       
        ;; this is a pointer, call into the hook to decode the name 
        (let ((offset (logior (ash (logand len 63) 8)
-			     (read-byte stream))))
-	 (values (funcall *resolve-pointer-hook* offset)
-		 t))))))
-      
+                             (read-byte stream))))
+         (values (funcall *resolve-pointer-hook* offset)
+                 t))))))
+
 ;; -------------------------
 
 (defun encode-name (name stream)
@@ -52,30 +52,30 @@ and should return the name pointed to by that offset, i.e. it should call decode
        (encode-label "" stream))
     (let ((p (position #\. name :test #'char= :start pos)))
       (cond
-	(p
-	 (encode-label (subseq name pos p) stream)
-	 (setf pos (1+ p)))
-	(t 
-	 (encode-label (subseq name pos) stream)
-	 (setf pos (length name)))))))
+        (p
+         (encode-label (subseq name pos p) stream)
+         (setf pos (1+ p)))
+        (t 
+         (encode-label (subseq name pos) stream)
+         (setf pos (length name)))))))
 
 
 (defun decode-name (stream)
   "Decode a list of labels from the stream. Returns a dotted string."
   (with-output-to-string (s)
     (do ((done nil)
-	 (first t))
-	(done)
+         (first t))
+        (done)
       (multiple-value-bind (label pointer) (decode-label stream)
-	(when pointer (setf done t))
-	(cond
-	  ((null label) (setf done t))
-	  ((string= label "")
-	   (setf done t))
-	  (t 
-	   (unless first (write-char #\. s))
-	   (setf first nil)
-	   (write-string label s)))))))
+        (when pointer (setf done t))
+        (cond
+          ((null label) (setf done t))
+          ((string= label "")
+           (setf done t))
+          (t 
+           (unless first (write-char #\. s))
+           (setf first nil)
+           (write-string label s)))))))
 
 ;; -------------------------
 
@@ -121,7 +121,7 @@ so you may read until EOF to extract all the information."))
   ;; read until eof
   (flexi-streams:with-output-to-sequence (s)
     (do ((b (read-byte stream nil nil) (read-byte stream nil nil)))
-	((null b))
+        ((null b))
       (write-byte b s))))
 
 ;; ------- cname -----
@@ -136,13 +136,13 @@ so you may read until EOF to extract all the information."))
 
 (defmethod encode-rdata ((type (eql :hinfo)) data stream)
   (let ((cpu (getf data :cpu))
-	(os (getf data :os)))
+        (os (getf data :os)))
     (encode-string cpu stream)
     (encode-string os stream)))
 
 (defmethod decode-rdata ((type (eql :hinfo)) stream)
   (let ((cpu (decode-string stream))
-	(os (decode-string stream)))
+        (os (decode-string stream)))
     (list :cpu cpu :os os)))
 
 ;; ----------- madname --------
@@ -185,9 +185,9 @@ so you may read until EOF to extract all the information."))
 
 (defmethod encode-rdata ((type (eql :srv)) data stream)
   (let ((priority (getf data :priority))
-	(weight (getf data :weight))
-	(port (getf data :port))
-	(target (getf data :target)))
+        (weight (getf data :weight))
+        (port (getf data :port))
+        (target (getf data :target)))
     (nibbles:write-ub16/be priority stream)
     (nibbles:write-ub16/be weight stream)
     (nibbles:write-ub16/be port stream)
@@ -195,13 +195,13 @@ so you may read until EOF to extract all the information."))
 
 (defmethod decode-rdata ((type (eql :srv)) stream)
   (let ((priority (nibbles:read-ub16/be stream))
-	(weight (nibbles:read-ub16/be stream))
-	(port (nibbles:read-ub16/be stream))
-	(target (decode-name stream)))
+        (weight (nibbles:read-ub16/be stream))
+        (port (nibbles:read-ub16/be stream))
+        (target (decode-name stream)))
     (list :priority priority
-	  :weight weight
-	  :port port
-	  :target target)))
+          :weight weight
+          :port port
+          :target target)))
 
 ;; --------------------- ptr ------------------
 
@@ -232,8 +232,8 @@ so you may read until EOF to extract all the information."))
         :retry (nibbles:read-ub32/be stream)
         :expire (nibbles:read-ub32/be stream)
         :minimum (nibbles:read-ub32/be stream)))
-        
-  
+
+
 ;; --------------------------------------------
 
 ;; resource record structure 
@@ -242,22 +242,22 @@ so you may read until EOF to extract all the information."))
 
 (defun encode-rr (stream rr)
   (let ((name (rr-name rr))
-	(type (rr-type rr))
-	(class (rr-class rr))
-	(ttl (rr-ttl rr))
-	(rdata (rr-rdata rr)))
+        (type (rr-type rr))
+        (class (rr-class rr))
+        (ttl (rr-ttl rr))
+        (rdata (rr-rdata rr)))
     ;; name
     (encode-name name stream)
     ;; type
     (nibbles:write-ub16/be (or (cadr (assoc type *type-codes*))
-			       (error "Unknown TYPE ~A" type))
-			   stream)
+                               (error "Unknown TYPE ~A" type))
+                           stream)
     ;; class
     (nibbles:write-ub16/be (cadr (assoc class *class-codes*)) stream)
     ;; ttl
     (nibbles:write-sb32/be ttl stream)
     (let ((octets (flexi-streams:with-output-to-sequence (s)
-		    (encode-rdata type rdata s))))
+                    (encode-rdata type rdata s))))
       ;; rdlength 
       (nibbles:write-ub16/be (length octets) stream)
       ;; rdata
@@ -265,21 +265,21 @@ so you may read until EOF to extract all the information."))
 
 (defun decode-rr (stream)
   (let* ((name (decode-name stream))
-	 (type (nibbles:read-ub16/be stream))
-	 (class (nibbles:read-ub16/be stream))
-	 (ttl (nibbles:read-sb32/be stream)))
+         (type (nibbles:read-ub16/be stream))
+         (class (nibbles:read-ub16/be stream))
+         (ttl (nibbles:read-sb32/be stream)))
     (let ((len (nibbles:read-ub16/be stream))
-	  (tname (car (find type *type-codes*
-			    :key #'cadr :test #'=))))
+          (tname (car (find type *type-codes*
+                            :key #'cadr :test #'=))))
       (let ((v (nibbles:make-octet-vector len)))
-	(read-sequence v stream)
-	(flexi-streams:with-input-from-sequence (s v)
-	  (make-rr :name name
-		   :type tname
-		   :class (car (find class *class-codes*
-				     :key #'cadr :test #'=))
-		   :ttl ttl
-		   :rdata (decode-rdata tname s)))))))
+        (read-sequence v stream)
+        (flexi-streams:with-input-from-sequence (s v)
+          (make-rr :name name
+                   :type tname
+                   :class (car (find class *class-codes*
+                                     :key #'cadr :test #'=))
+                   :ttl ttl
+                   :rdata (decode-rdata tname s)))))))
 
 ;;; -----------------------------
 
@@ -287,24 +287,26 @@ so you may read until EOF to extract all the information."))
 (defstruct header 
   id qr opcode rcode qcount acount ncount rcount)
 
+;; HEADER format: |QR|   Opcode  |AA|TC|RD|RA|   Z    |   RCODE   |
 (defun encode-header (stream header)
   (nibbles:write-ub16/be (header-id header) stream)
   (nibbles:write-ub16/be (logior (ecase (header-qr header)
-				   (:query 0)
-				   (:reply (ash 1 15)))
-				 (ash (ecase (header-opcode header)
-					(:query 0)
-					(:iquery 1)
-					(:status 2))
-				      11)
-				 (ecase (header-rcode header)
-				   (:ok 0)
-				   (:format-error 1)
-				   (:server-failure 2)
-				   (:name-error 3)
-				   (:not-implemented 4)
-				   (:refused 5)))
-			 stream)
+                                   (:query 0)
+                                   (:reply (ash 1 15)))
+                                 (ash (ecase (header-opcode header)
+                                        (:query 0)
+                                        (:iquery 1)
+                                        (:status 2))
+                                      11)
+                                 ;; TODO: other flag bits can be set here
+                                 (ecase (header-rcode header)
+                                   (:ok 0)
+                                   (:format-error 1)
+                                   (:server-failure 2)
+                                   (:name-error 3)
+                                   (:not-implemented 4)
+                                   (:refused 5)))
+                         stream)
   (nibbles:write-ub16/be (header-qcount header) stream)
   (nibbles:write-ub16/be (header-acount header) stream) 
   (nibbles:write-ub16/be (header-ncount header) stream)
@@ -316,25 +318,26 @@ so you may read until EOF to extract all the information."))
     (setf (header-id h) (nibbles:read-ub16/be stream))
     (let ((flags (nibbles:read-ub16/be stream)))
       (if (logtest flags #x8000)
-	  (setf (header-qr h) :reply)
-	  (setf (header-qr h) :query))
+          (setf (header-qr h) :reply)
+          (setf (header-qr h) :query))
+      ;; TODO: decode other header flags here 
       (setf (header-opcode h)
-	    (ecase (logand (ash flags -11) #x3)
-	      (0 :query)
-	      (1 :iquery)
-	      (2 :status)))
+            (ecase (logand (ash flags -11) #x3)
+              (0 :query)
+              (1 :iquery)
+              (2 :status)))
       (setf (header-rcode h)
-	    (ecase (logand flags #x7)
-	      (0 :ok)
-	      (1 :format-error)
-	      (2 :server-failure)
-	      (3 :name-error)
-	      (4 :not-implemented)
-	      (5 :refused))))
+            (ecase (logand flags #x7)
+              (0 :ok)
+              (1 :format-error)
+              (2 :server-failure)
+              (3 :name-error)
+              (4 :not-implemented)
+              (5 :refused))))
     (setf (header-qcount h) (nibbles:read-ub16/be stream)
-	  (header-acount h) (nibbles:read-ub16/be stream)
-	  (header-ncount h) (nibbles:read-ub16/be stream)
-	  (header-rcount h) (nibbles:read-ub16/be stream))
+          (header-acount h) (nibbles:read-ub16/be stream)
+          (header-ncount h) (nibbles:read-ub16/be stream)
+          (header-rcount h) (nibbles:read-ub16/be stream))
     h))
 
 
@@ -342,8 +345,8 @@ so you may read until EOF to extract all the information."))
 
 (defun encode-question (stream question)
   (let ((name (getf question :name))
-	(type (getf question :type))
-	(class (getf question :class)))
+        (type (getf question :type))
+        (class (getf question :class)))
     (encode-name name stream)
     (nibbles:write-ub16/be (or (cadr (assoc type *type-codes*))
                                (error "Unknown type code ~A, expected one of ~S" 
@@ -356,11 +359,11 @@ so you may read until EOF to extract all the information."))
 
 (defun decode-question (stream)
   (let ((name (decode-name stream))
-	(type (nibbles:read-ub16/be stream))
-	(class (nibbles:read-ub16/be stream)))
+        (type (nibbles:read-ub16/be stream))
+        (class (nibbles:read-ub16/be stream)))
     (list :name name 
-	  :type (car (find type *type-codes* :key #'cadr :test #'=))
-	  :class (car (find class *class-codes* :key #'cadr :test #'=)))))
+          :type (car (find type *type-codes* :key #'cadr :test #'=))
+          :class (car (find class *class-codes* :key #'cadr :test #'=)))))
 
 (defun question (name &optional (type :a) (class :in))
   "Allocate a question to use with QUERY.
@@ -370,12 +373,13 @@ TYPE ::= the type of query.
 CLASS ::= the class of query, almost always :IN (internet).
 "
   (declare (type string name)
-	   (type symbol type class))
+           (type symbol type class))
   (list :name name :type type :class class))
 
 ;; --------------------
 
 ;; message
+;; TODO: support compression when encoding
 
 (defstruct message 
   header questions answers authorities additionals)
@@ -394,32 +398,32 @@ CLASS ::= the class of query, almost always :IN (internet).
 (defun decode-message (stream)
   (let ((header (decode-header stream)))
     (make-message :header header
-		  :questions 
-		  (loop :for i :below (header-qcount header)
-		     :collect (decode-question stream))
-		  :answers 
-		  (loop :for i :below (header-acount header)
-		     :collect (decode-rr stream))
-		  :authorities 
-		  (loop :for i :below (header-ncount header)
-		     :collect (decode-rr stream))
-		  :additionals 
-		  (loop :for i :below (header-rcount header)
-		     :collect (decode-rr stream)))))
+                  :questions 
+                  (loop :for i :below (header-qcount header)
+                     :collect (decode-question stream))
+                  :answers 
+                  (loop :for i :below (header-acount header)
+                     :collect (decode-rr stream))
+                  :authorities 
+                  (loop :for i :below (header-ncount header)
+                     :collect (decode-rr stream))
+                  :additionals 
+                  (loop :for i :below (header-rcount header)
+                     :collect (decode-rr stream)))))
 
 (defun message (questions &key (qr :query) (opcode :query) (rcode :ok) answers authorities additionals)
   (make-message :header (make-header :opcode opcode
-				     :id (random (expt 2 16))
-				     :qr qr
-				     :rcode rcode
-				     :qcount (length questions)
-				     :acount (length answers)
-				     :ncount (length authorities)
-				     :rcount (length additionals))
-		:questions questions
-		:answers answers
-		:authorities authorities
-		:additionals additionals))
+                                     :id (random (expt 2 16))
+                                     :qr qr
+                                     :rcode rcode
+                                     :qcount (length questions)
+                                     :acount (length answers)
+                                     :ncount (length authorities)
+                                     :rcount (length additionals))
+                :questions questions
+                :answers answers
+                :authorities authorities
+                :additionals additionals))
 
 
 ;; ------------------------------------------
