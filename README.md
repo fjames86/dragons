@@ -46,10 +46,36 @@ Not all DNS servers support inverse queries.
 CL-USER> (dragons:iquery (dragons:answer #(216 258 10 100)))
 ```
 
-### 2.4 Example
+### 2.4 Get host by name
+
+Equivalents to gethostbyname and gethostbyaddr are `get-host-by-name` and `get-host-by-addr`:
 
 ```
-CL-USER> (query (list (question "google.com")) :host "10.1.100.100")
+;; Resolve a hostname to an internet address
+CL-USER> (dns:get-host-by-name "mymachine")
+(#S(FSOCKET:SOCKADDR-IN :ADDR #(10 1 2 10) :PORT 0))
+
+;; attempt to resolve an internet address into a hostname 
+CL-USER> (dns:get-host-by-addr (car *))
+("mymachine")
+
+```
+
+### 2.5 Configuration
+
+* The default is to contact the DNS server using UDP. You can choose to use TCP instead by providing :TCP as
+the protocol parameter to the `QUERY` function.
+
+* The default address of the DNS server is retrieved by calling `FSOCKET:GET-NAME-SERVERS`. You can choose
+a different address by either providing one as the `ADDR` parameter to `QUERY` or by setting `*DNS-ADDR*`.
+
+* The default database path is to the current home directory, but this can be changed by modifying `*DATABASE-PATH*
+before calling any other functions. The database is opened on the first call.
+
+### 2.6 Example
+
+```
+CL-USER> (query (list (question "google.com")))
 (#S(DRAGONS::RR
     :NAME "google.com"
     :TYPE :A
