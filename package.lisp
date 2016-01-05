@@ -5,22 +5,27 @@
   (:use #:cl)
   (:nicknames #:dns)
   (:export #:query
-	   #:iquery
+           #:iquery
            #:question
-	   #:answer
-	   #:*dns-host*
-	   #:dns-error
+           #:answer
+           #:*dns-host*
+           #:dns-error
 
+           #:get-host-by-name
+           #:get-host-by-addr
+           
            ;; for resource record access
            #:rr-name
            #:rr-type
            #:rr-class
            #:rr-ttl
            #:rr-rdata
-	   
-	   ;; public database operators
-	   #:*database-path*
-	   #:list-records
-	   #:remove-record
-	   #:insert-record
-	   ))
+           
+           ;; public database operators
+           #:*database-path*
+           #:list-records
+           #:remove-record
+           #:insert-record
+           #:purge-records
+           
+           ))

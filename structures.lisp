@@ -159,7 +159,7 @@ so you may read until EOF to extract all the information."))
 (defmethod encode-rdata ((type (eql :a)) data stream)
   (write-sequence 
    (etypecase data
-     (string (usocket:dotted-quad-to-vector-quad data))
+     (string (fsocket::dotted-quad-to-inaddr data))
      (vector data))
    stream))
 
@@ -202,6 +202,14 @@ so you may read until EOF to extract all the information."))
 	  :weight weight
 	  :port port
 	  :target target)))
+
+;; --------------------- ptr ------------------
+
+(defmethod encode-rdata ((type (eql :ptr)) data stream)
+  (encode-name data stream))
+
+(defmethod decode-rdata ((type (eql :ptr)) stream)
+  (decode-name stream))
 
 ;; -------------------------------------------
 
@@ -337,8 +345,14 @@ so you may read until EOF to extract all the information."))
 	(type (getf question :type))
 	(class (getf question :class)))
     (encode-name name stream)
-    (nibbles:write-ub16/be (cadr (assoc type *type-codes*)) stream)
-    (nibbles:write-ub16/be (cadr (assoc class *class-codes*)) stream)))
+    (nibbles:write-ub16/be (or (cadr (assoc type *type-codes*))
+                               (error "Unknown type code ~A, expected one of ~S" 
+                                      type (mapcar #'car *type-codes*)))
+                           stream)
+    (nibbles:write-ub16/be (or (cadr (assoc class *class-codes*))
+                               (error "Unknown class code ~A, expected one of ~S"
+                                      class (mapcar #'car *class-codes*)))
+                           stream)))
 
 (defun decode-question (stream)
   (let ((name (decode-name stream))

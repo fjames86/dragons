@@ -98,3 +98,10 @@
       (when entry 
         (push entry entries)))
     entries))
+
+(defun purge-records (&optional age)
+  (open-dn-db)
+  (let ((purge-age (+ (get-universal-time) (or age 0))))
+    (pounds.db:doentries (entry *db*)
+      (when (< (cadr entry) purge-age)
+        (pounds.db:clear-entry)))))

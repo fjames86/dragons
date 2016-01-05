@@ -7,69 +7,92 @@
 (define-condition dns-error (error)
   ((stat :initarg :stat :reader dns-error-stat))
   (:report (lambda (c stream)
-	     (format stream "DNS-ERROR: ~A" (dns-error-stat c)))))
-	       
+             (format stream "DNS-ERROR: ~A" (dns-error-stat c)))))
+
 ;; -----------------------------
 
 (defconstant +dns-port+ 53)
 
-(defun query-udp (host message &key (timeout 1))
-  (let ((socket (usocket:socket-connect host +dns-port+
-					:protocol :datagram
-					:element-type '(unsigned-byte 8))))
-    (let ((buffer
-	   (flexi-streams:with-output-to-sequence (s)
-	     (encode-message s message)))) 
-      (usocket:socket-send socket buffer (length buffer)))
-    (when (usocket:wait-for-input socket 
-				  :timeout timeout
-				  :ready-only t)
-      (let ((buffer (nibbles:make-octet-vector 512))) ;; 512 is the maximum allowed udp packet size for DNS queries
-	(multiple-value-bind (%buffer count remote-host remote-port) (usocket:socket-receive socket buffer 512)
-	  (declare (ignore %buffer remote-host remote-port))
-;;	  (format t "~A:~A ~A ~%~A~%" remote-host remote-port count (subseq buffer 0 count))
-	  (when (or (< count 0) (= count #xffffffff)) 
-	    ;; this is a workaround for behaviour I've seen in SBCL-Win32-x64 and LispWorks
-	    (error "socket-receive error"))
-	  (flexi-streams:with-input-from-sequence (s buffer :end count)
-	    (let ((*resolve-pointer-hook* 
-		   (lambda (offset)
-		     (flexi-streams:with-input-from-sequence (v buffer :start offset)
-		       (decode-name v)))))
-	      (decode-message s))))))))
+(defun query-udp (addr message &optional timeout)
+  (declare (type fsocket:sockaddr-in addr))
+  (let ((fd (fsocket:open-socket :type :datagram))
+        (pc (fsocket:open-poll))
+        (buf (make-array 512 :element-type '(unsigned-byte 8) :initial-element 0)))
+    (unwind-protect
+         (progn           
+           (fsocket:socket-bind fd (fsocket:make-sockaddr-in))
+           (fsocket:poll-register pc
+                                  (make-instance 'fsocket:pollfd
+                                                 :fd fd
+                                                 :events (fsocket:poll-events :pollin)))
+           (fsocket:socket-sendto fd
+                                  (flexi-streams:with-output-to-sequence (s)
+                                    (encode-message s message))
+                                  addr)
+           (unless (fsocket:poll pc :timeout (or timeout 500))
+             (error 'dns-error :stat "Timeout"))
+           
+           (multiple-value-bind (cnt raddr) (fsocket:socket-recvfrom fd buf)
+             (declare (ignore raddr))
+             (flexi-streams:with-input-from-sequence (s buf :end cnt)
+               (let ((*resolve-pointer-hook* 
+                      (lambda (offset)
+                        (flexi-streams:with-input-from-sequence (v buf :start offset)
+                          (decode-name v)))))
+                 (decode-message s)))))
+      (fsocket:close-socket fd)
+      (fsocket:close-poll pc))))
 
-(defun query-tcp (host message &key (timeout 1))
-  (let ((socket (usocket:socket-connect host +dns-port+
-					:protocol :stream
-					:element-type '(unsigned-byte 8))))
-    (let ((buffer
-	   (flexi-streams:with-output-to-sequence (s)
-	     (encode-message s message))))
-      (nibbles:write-ub16/be (length buffer) (usocket:socket-stream socket))
-      (write-sequence buffer (usocket:socket-stream socket))
-      (force-output (usocket:socket-stream socket)))
-    (when (usocket:wait-for-input socket 
-				  :timeout timeout
-				  :ready-only t)
-      (let* ((len (nibbles:read-ub16/be (usocket:socket-stream socket)))
-	     (buffer (nibbles:make-octet-vector len)))
-	(read-sequence buffer (usocket:socket-stream socket))
-	(flexi-streams:with-input-from-sequence (s buffer)
-	  (let ((*resolve-pointer-hook* 
-		 (lambda (offset)
-		   (flexi-streams:with-input-from-sequence (v buffer :start offset)
-		     (decode-name v)))))
-	  (decode-message s)))))))
+(defun query-tcp (addr message &optional timeout)
+  (declare (type fsocket:sockaddr-in addr))
+  (let ((fd (fsocket:open-socket :type :stream))
+        (pc (fsocket:open-poll))
+        (buf (make-array 512 :element-type '(unsigned-byte 8) :initial-element 0)))
+    (unwind-protect
+         (progn           
+           (fsocket:socket-bind fd (fsocket:make-sockaddr-in))
+           (fsocket:socket-connect fd addr)
+           (fsocket:poll-register pc
+                                  (make-instance 'fsocket:pollfd
+                                                 :fd fd
+                                                 :events (fsocket:poll-events :pollin)))
+           ;; TODO: check for short write 
+           (fsocket:socket-send fd
+                                (flexi-streams:with-output-to-sequence (s)
+                                  (encode-message s message)))
+           ;; Read a uint32 byte count followed by the message
+           (let ((mcount 0))
+             (unless (fsocket:poll pc :timeout (or timeout 500))
+               (error 'dns-error :stat "Timeout"))
+             (fsocket:socket-recv fd buf :end 4)
+             ;; TODO: check for short read
+             (setf mcount (nibbles:ub32ref/be buf 0))
+             (do ((cnt 0))
+                 ((= cnt mcount))
+               (unless (fsocket:poll pc :timeout (or timeout 500))
+                 (error 'dns-error "Timeout"))
+               (let ((rcnt (fsocket:socket-recv fd buf :start (+ cnt 4))))
+                 (incf cnt rcnt)))
+
+             ;; parse the message 
+             (flexi-streams:with-input-from-sequence (s buf :end mcount)
+               (let ((*resolve-pointer-hook* 
+                      (lambda (offset)
+                        (flexi-streams:with-input-from-sequence (v buf :start offset)
+                          (decode-name v)))))
+                 (decode-message s)))))
+      (fsocket:close-socket fd)
+      (fsocket:close-poll pc))))
 
 
-(defvar *dns-host* nil
+(defvar *dns-addr* (first (fsocket:get-name-servers))
   "Address of default DNS.")
 
-(defun query (questions &key host (timeout 1) (protocol :udp))
+(defun query (questions &key addr timeout (protocol :udp))
   "Send a DNS query to the DNS specified by HOST or *DNS-HOST*.
 
 QUESTIONS ::= either a list of questions, as returned by QUESTION, a single question or a string, which is interpreted as a standard :A/:IN question.
-TIMEOUT ::= time to wait for a reply.
+TIMEOUT ::= time to wait for a reply in milliseconds
 PROTOCOL ::= protocol to send the quest, :UDP or :TCP.
 
 Returns (values answer* authority* addtitional* question*) with
@@ -78,13 +101,6 @@ QUESTION ::= question instance.
 
 The resource records contain different data depending on the type/class of resource, access the RDATA slot for the data. 
 "
-  (cond
-    ((null *dns-host*)
-     (if host
-	 (setf *dns-host* host)
-	 (error "Must provide a DNS address or set *DNS-HOST*")))
-    ((null host) 
-     (setf host *dns-host*)))
 
   ;; allow questions to be specified by string
   (cond 
@@ -94,52 +110,51 @@ The resource records contain different data depending on the type/class of resou
     ((and (listp questions) (not (listp (car questions))))
      ;; a single questions was provided. wrap in a list 
      (setf questions (list questions))))
-    
+  
   ;; first try and answer the query using the local database
   (let ((answers
-	 (loop :for question :in questions
-	    :nconc
-	    (let ((rr (find-record (make-rr :name (getf question :name)
-                                        :type (getf question :type)
-                                        :class (getf question :class)
-                                        :ttl 0
-                                        :rdata nil))))
-	      (when rr (list rr))))))
+         (loop :for question :in questions
+            :nconc
+            (let ((rr (find-record (make-rr :name (getf question :name)
+                                            :type (getf question :type)
+                                            :class (getf question :class)
+                                            :ttl 0
+                                            :rdata nil))))
+              (when rr (list rr))))))
     (when answers
       (return-from query answers)))
 
 
   (let ((qmessage (message questions)))
     (let ((message 
-	   (ecase protocol
-	     (:udp (query-udp host qmessage :timeout timeout))
-	     (:tcp (query-tcp host qmessage :timeout timeout)))))
-      (unless message
-	(error "Request timed out"))
+           (ecase protocol
+             (:udp (query-udp (or addr *dns-addr*) qmessage timeout))
+             (:tcp (query-tcp (or addr *dns-addr*) qmessage timeout)))))
+      (unless message (error 'dns-error "Timeout"))
       ;; if the header stat is not OK then an error occured
       (unless (eq (header-rcode (message-header message)) :ok)
-	(error 'dns-error :stat (header-rcode (message-header message))))
+        (error 'dns-error :stat (header-rcode (message-header message))))
 
       ;; cache the answers for future use
       (let ((now (get-universal-time)))
-	(dolist (rr (message-answers message))
-	  (unless (zerop (rr-ttl rr))
-	    ;; cache the record
-	    (add-record rr (+ now (rr-ttl rr))))))
+        (dolist (rr (message-answers message))
+          (unless (zerop (rr-ttl rr))
+            ;; cache the record
+            (add-record rr (+ now (rr-ttl rr))))))
 
       (values (message-answers message)
-	      (message-authorities message)
-	      (message-additionals message)
-	      (message-questions message)))))
+              (message-authorities message)
+              (message-additionals message)
+              (message-questions message)))))
 
 (defun answer (rdata &optional (type :a) (class :in))
   (make-rr :name ""
-	   :type type
-	   :class class
-	   :ttl 0
-	   :rdata rdata))
+           :type type
+           :class class
+           :ttl 0
+           :rdata rdata))
 
-(defun iquery (answers &key host (timeout 1) (protocol :udp))
+(defun iquery (answers &key addr timeout (protocol :udp))
   "Send a DNS inverse query to the DNS specified by HOST or *DNS-HOST*.
 
 ANSWERS ::= a list of answers, as returned by ANSWER.
@@ -152,32 +167,50 @@ QUESTION ::= question instance.
 
 The resource records contain different data depending on the type/class of resource, access the RDATA slot for the data. 
 "
-  (cond
-    ((null *dns-host*)
-     (if host
-	 (setf *dns-host* host)
-	 (error "Must provide a DNS address or set *DNS-HOST*")))
-    ((null host) 
-     (setf host *dns-host*)))
-
   (when (rr-p answers) 
     (setf answers (list answers)))
-    
+  
   (let ((qmessage (message nil :opcode :iquery 
-			   :answers answers)))
+                           :answers answers)))
     (let ((message 
-	   (ecase protocol
-	     (:udp (query-udp host qmessage :timeout timeout))
-	     (:tcp (query-tcp host qmessage :timeout timeout)))))
-      (unless message
-	(error "Request timed out"))
+           (ecase protocol
+             (:udp (query-udp (or addr *dns-addr*) qmessage timeout))
+             (:tcp (query-tcp (or addr *dns-addr*) qmessage timeout)))))
+      (unless message (error 'dns-error :stat "Timeout"))
       ;; if the header stat is not OK then an error occured
       (unless (eq (header-rcode (message-header message)) :ok)
-	(error 'dns-error :stat (header-rcode (message-header message))))
+        (error 'dns-error :stat (header-rcode (message-header message))))
       (values (message-answers message)
-	      (message-authorities message)
-	      (message-additionals message)
-	      (message-questions message)))))
+              (message-authorities message)
+              (message-additionals message)
+              (message-questions message)))))
 
 
+
+;; ----------------------------------
+
+(defun get-host-by-name (name)
+  "Resolve a hostname into a list of SOCKADDR-IN addresses.
+NAME ::= string hostname.
+Returns a list of FSOCKET:SOCKADDR-IN addresses."
+  (mapcar (lambda (rr)
+            (fsocket:make-sockaddr-in :addr (rr-rdata rr)))
+          (query (question name))))
+
+(defun get-host-by-addr (addr)
+  "Resolve an internet address into a list of hostnames.
+ADDR ::= either a string representing a dotted quad or a FSOCKET:SOCKADDR-IN address
+Returns a list of strings for known hostnames."
+  (etypecase addr
+    (string (setf addr (fsocket:make-sockaddr-in :addr (fsocket::dotted-quad-to-inaddr addr))))
+    (fsocket:sockaddr-in nil))
+  (let ((dq (format nil "~A.~A.~A.~A"
+                    (aref (fsocket:sockaddr-in-addr addr) 3)
+                    (aref (fsocket:sockaddr-in-addr addr) 2)
+                    (aref (fsocket:sockaddr-in-addr addr) 1)
+                    (aref (fsocket:sockaddr-in-addr addr) 0))))
+    (mapcar (lambda (rr)
+              (rr-rdata rr))
+            (query (question (format nil "~A.in-addr.arpa" dq)
+                             :ptr)))))
 
