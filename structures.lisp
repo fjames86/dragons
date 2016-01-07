@@ -411,9 +411,9 @@ CLASS ::= the class of query, almost always :IN (internet).
                   (loop :for i :below (header-rcount header)
                      :collect (decode-rr stream)))))
 
-(defun message (questions &key (qr :query) (opcode :query) (rcode :ok) answers authorities additionals)
+(defun message (questions &key (qr :query) (opcode :query) (rcode :ok) answers authorities additionals id)
   (make-message :header (make-header :opcode opcode
-                                     :id (random (expt 2 16))
+                                     :id (or id (random (expt 2 16)))
                                      :qr qr
                                      :rcode rcode
                                      :qcount (length questions)
