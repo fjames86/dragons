@@ -8,7 +8,7 @@
            #:iquery
            #:question
            #:answer
-           #:*dns-addr*
+           #:*dns-addrs*
            #:dns-error
 
            #:get-host-by-name

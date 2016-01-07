@@ -280,16 +280,13 @@ The resource records contain different data depending on the type/class of resou
            :rdata rdata))
 
 (defun iquery (answers &key addr timeout (protocol :udp))
-  "Send a DNS inverse query to the DNS specified by HOST or *DNS-HOST*.
-
+  "Send a DNS inverse query to the DNS specified by ADDR or the first of *DNS-ADDRS*.
 ANSWERS ::= a list of answers, as returned by ANSWER.
 TIMEOUT ::= time to wait for a reply.
 PROTOCOL ::= protocol to send the quest, :UDP or :TCP.
-
 Returns (values answer* authority* addtitional* question*) with
 ANSWER, AUTHORITY, ADDITIONAL ::= resource record (RR) instances
 QUESTION ::= question instance.
-
 The resource records contain different data depending on the type/class of resource, access the RDATA slot for the data. 
 "
   (when (rr-p answers) 
@@ -299,18 +296,8 @@ The resource records contain different data depending on the type/class of resou
                            :answers answers)))
     (let ((message 
            (ecase protocol
-	     (:udp (if addr 
-		       (query-udp addr qmessage timeout)
-		       (do ((addrs *dns-addrs* (cdr addrs))
-			    (msg nil))
-			   ((or (null addrs) msg) msg)
-			 (setf msg (query-udp (car addrs) qmessage timeout)))))
-             (:tcp (if addr 
-		       (query-tcp addr qmessage timeout)
-		       (do ((addrs *dns-addrs* (cdr addrs))
-			    (msg nil))
-			   ((or (null addrs) msg) msg)
-			 (setf msg (query-tcp (car addrs) qmessage timeout))))))))
+             (:udp (query-udp (or addr (car *dns-addr*)) qmessage timeout))
+             (:tcp (query-tcp (or addr (car *dns-addr*)) qmessage timeout)))))
       (unless message (error 'dns-error :stat "Timeout"))
       ;; if the header stat is not OK then an error occured
       (unless (eq (header-rcode (message-header message)) :ok)
@@ -319,7 +306,6 @@ The resource records contain different data depending on the type/class of resou
               (message-authorities message)
               (message-additionals message)
               (message-questions message)))))
-
 
 
 ;; ------------------- Useful wrappers ---------------------
