@@ -144,6 +144,10 @@ The resource records contain different data depending on the type/class of resou
 
 (defun query-multiple (questions addresses &optional timeout)
   ;; allocate socket and poll decscriptor
+
+  ;; if no timeout supplied make sure we use one! 
+  (unless timeout (setf timeout 500))
+  
   (let* ((fd (fsocket:open-socket))
 	 (pc (fsocket:open-poll))
 	 (msgs (mapcar (lambda (addr)
