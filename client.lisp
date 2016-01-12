@@ -305,8 +305,8 @@ The resource records contain different data depending on the type/class of resou
                            :answers answers)))
     (let ((message 
            (ecase protocol
-             (:udp (query-udp (or addr (car *dns-addr*)) qmessage timeout))
-             (:tcp (query-tcp (or addr (car *dns-addr*)) qmessage timeout)))))
+             (:udp (query-udp (or addr (car *dns-addrs*)) qmessage timeout))
+             (:tcp (query-tcp (or addr (car *dns-addrs*)) qmessage timeout)))))
       (unless message (error 'dns-error :stat "Timeout"))
       ;; if the header stat is not OK then an error occured
       (unless (eq (header-rcode (message-header message)) :ok)
