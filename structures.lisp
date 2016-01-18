@@ -95,12 +95,10 @@
     (let ((offset (cadr (find (subseq name pos) *pointer-offsets*
 			      :key #'car :test #'string=))))
       (when offset
-	(break)
 	(encode-uint16 (logior (ash #b11000000 8) offset) blk)
 	(return-from encode-name nil)))
 
     ;; we are writing ourselves in, record our position
-    (break)
     (push (list (subseq name pos) (xdr-block-offset blk))
 	  *pointer-offsets*)
 
