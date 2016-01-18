@@ -13,5 +13,5 @@
    (:file "structures")
    (:file "database")
    (:file "client"))
-  :depends-on (:fsocket :flexi-streams :nibbles :babel :pounds))
+  :depends-on (:fsocket :drx :nibbles :babel :pounds))
 

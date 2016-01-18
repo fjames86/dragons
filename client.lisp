@@ -5,7 +5,7 @@
 
 
 (define-condition dns-error (error)
-  ((stat :initarg :stat :reader dns-error-stat))
+  ((stat :initform nil :initarg :stat :reader dns-error-stat))
   (:report (lambda (c stream)
              (format stream "DNS-ERROR: ~A" (dns-error-stat c)))))
 
@@ -17,29 +17,28 @@
   (declare (type fsocket:sockaddr-in addr))
   (let ((fd (fsocket:open-socket :type :datagram))
         (pc (fsocket:open-poll))
-        (buf (make-array 512 :element-type '(unsigned-byte 8) :initial-element 0)))
+        (blk (xdr-block 512)))
     (unwind-protect
-         (progn           
+         (progn
+	   (encode-message blk message)
+	   
            (fsocket:socket-bind fd (fsocket:make-sockaddr-in))
            (fsocket:poll-register pc
                                   (make-instance 'fsocket:pollfd
                                                  :fd fd
                                                  :events (fsocket:poll-events :pollin)))
            (fsocket:socket-sendto fd
-                                  (flexi-streams:with-output-to-sequence (s)
-                                    (encode-message s message))
-                                  addr)
+				  (xdr-block-buffer blk)
+                                  addr
+				  :start 0 :end (xdr-block-offset blk))
            (unless (fsocket:poll pc :timeout (or timeout 500))
              (error 'dns-error :stat "Timeout"))
            
-           (multiple-value-bind (cnt raddr) (fsocket:socket-recvfrom fd buf)
+           (multiple-value-bind (cnt raddr) (fsocket:socket-recvfrom fd (xdr-block-buffer blk))
              (declare (ignore raddr))
-             (flexi-streams:with-input-from-sequence (s buf :end cnt)
-               (let ((*resolve-pointer-hook* 
-                      (lambda (offset)
-                        (flexi-streams:with-input-from-sequence (v buf :start offset)
-                          (decode-name v)))))
-                 (decode-message s)))))
+	     (setf (xdr-block-offset blk) 0
+		   (xdr-block-count blk) cnt)
+	     (decode-message blk)))
       (fsocket:close-socket fd)
       (fsocket:close-poll pc))))
 
@@ -47,40 +46,41 @@
   (declare (type fsocket:sockaddr-in addr))
   (let ((fd (fsocket:open-socket :type :stream))
         (pc (fsocket:open-poll))
-        (buf (make-array 512 :element-type '(unsigned-byte 8) :initial-element 0)))
+        (blk (xdr-block 512)))
     (unwind-protect
-         (progn           
+         (progn
+	   (encode-message blk message)
+	   
            (fsocket:socket-bind fd (fsocket:make-sockaddr-in))
            (fsocket:socket-connect fd addr)
            (fsocket:poll-register pc
                                   (make-instance 'fsocket:pollfd
                                                  :fd fd
                                                  :events (fsocket:poll-events :pollin)))
-           ;; TODO: check for short write 
-           (fsocket:socket-send fd
-                                (flexi-streams:with-output-to-sequence (s)
-                                  (encode-message s message)))
+           ;; TODO: check for short write
+	   (let ((v (xdr-block 4)))
+	     (encode-uint32 blk (xdr-block-offset blk))
+	     (fsocket:socket-send fd (xdr-block-buffer v)))
+           (fsocket:socket-send fd (xdr-block-buffer blk)
+				:start 0 :end (xdr-block-offset blk))
+
            ;; Read a uint32 byte count followed by the message
            (let ((mcount 0))
              (unless (fsocket:poll pc :timeout (or timeout 500))
                (error 'dns-error :stat "Timeout"))
-             (fsocket:socket-recv fd buf :end 4)
+             (fsocket:socket-recv fd (xdr-block-buffer blk) :end 4)
              ;; TODO: check for short read
-             (setf mcount (nibbles:ub32ref/be buf 0))
+             (setf mcount (nibbles:ub32ref/be (xdr-block-buffer blk) 0))
              (do ((cnt 0))
                  ((= cnt mcount))
                (unless (fsocket:poll pc :timeout (or timeout 500))
-                 (error 'dns-error "Timeout"))
-               (let ((rcnt (fsocket:socket-recv fd buf :start (+ cnt 4))))
+                 (error 'dns-error :stat "Timeout"))
+               (let ((rcnt (fsocket:socket-recv fd (xdr-block-buffer blk)
+						:start cnt)))
                  (incf cnt rcnt)))
-
-             ;; parse the message 
-             (flexi-streams:with-input-from-sequence (s buf :end mcount)
-               (let ((*resolve-pointer-hook* 
-                      (lambda (offset)
-                        (flexi-streams:with-input-from-sequence (v buf :start offset)
-                          (decode-name v)))))
-                 (decode-message s)))))
+	     (setf (xdr-block-offset blk) 0
+		   (xdr-block-count blk) mcount)
+	     (decode-message blk)))
       (fsocket:close-socket fd)
       (fsocket:close-poll pc))))
 
@@ -123,7 +123,7 @@ The resource records contain different data depending on the type/class of resou
            (ecase protocol
              (:udp (query-udp addr qmessage timeout))
              (:tcp (query-tcp addr qmessage timeout)))))
-      (unless message (error 'dns-error "Timeout"))
+      (unless message (error 'dns-error :stat "Timeout"))
 
       (process-message message))))
 
@@ -151,10 +151,13 @@ The resource records contain different data depending on the type/class of resou
   (let* ((fd (fsocket:open-socket))
 	 (pc (fsocket:open-poll))
 	 (msgs (mapcar (lambda (addr)
-			 (let ((id (random 65536)))
-			   (list addr 
-				 (flexi-streams:with-output-to-sequence (s)
-				   (encode-message s (message questions :id id)))
+			 (let ((id (random 65536))
+			       (blk (xdr-block 512)))
+			   (encode-message blk (message questions :id id))
+			   (list addr
+				 (subseq (xdr-block-buffer blk)
+					 0
+					 (xdr-block-offset blk))
 				 id)))
 		       addresses)))
 
@@ -177,20 +180,21 @@ The resource records contain different data depending on the type/class of resou
 		 (rauths nil)
 		 (radds nil)
 		 (rqs nil)
+		 (got-reply nil)
 		 (raddress nil))
-	     (do ((buffer (make-array 512 :element-type '(unsigned-byte 8) :initial-element 0))
+	     (do ((blk (xdr-block 512))
 		  (done nil))
 		 ((or ranswers done))
 	       (if (fsocket:poll pc :timeout timeout)
-		   (multiple-value-bind (cnt raddr) (fsocket:socket-recvfrom fd buffer)
+		   (multiple-value-bind (cnt raddr) (fsocket:socket-recvfrom fd (xdr-block-buffer blk))
+		     #+nil(format t "~A~%" (subseq (xdr-block-buffer blk) 0 cnt))
+		     (setf got-reply t)
 		     
-		     (let ((rmsg 
-			    (flexi-streams:with-input-from-sequence (s buffer :end cnt)
-			      (let ((*resolve-pointer-hook* 
-				     (lambda (offset)
-				       (flexi-streams:with-input-from-sequence (v buffer :start offset)
-					 (decode-name v)))))
-				(decode-message s)))))
+		     (setf (xdr-block-offset blk) 0
+			   (xdr-block-count blk) cnt)
+		     
+		     (let ((rmsg (decode-message blk)))
+		       
 		       ;; TODO: match the id with the address so we know whether we received from the same
 		       ;; host that we sent it to
 		       (handler-case 
@@ -205,6 +209,8 @@ The resource records contain different data depending on the type/class of resou
 			   (declare (ignore e))
 			   nil))))
 		   (setf done t)))
+
+	     (unless got-reply (error 'dns-error :stat "Timeout"))
 	     
 	     (values ranswers rauths radds rqs raddress)))
       (fsocket:close-socket fd)
@@ -301,8 +307,7 @@ The resource records contain different data depending on the type/class of resou
   (when (rr-p answers) 
     (setf answers (list answers)))
   
-  (let ((qmessage (message nil :opcode :iquery 
-                           :answers answers)))
+  (let ((qmessage (message nil :opcode :iquery :answers answers)))
     (let ((message 
            (ecase protocol
              (:udp (query-udp (or addr (car *dns-addrs*)) qmessage timeout))

@@ -3,6 +3,14 @@
 
 (defpackage #:dragons
   (:use #:cl)
+  (:import-from #:drx
+		#:xdr-block-buffer
+		#:xdr-block-offset 
+		#:xdr-block-count
+		#:make-xdr-block
+		#:xdr-block
+		#:encode-uint32
+		#:decode-uint32)  
   (:nicknames #:dns)
   (:export #:query
            #:iquery

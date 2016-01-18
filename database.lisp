@@ -19,14 +19,23 @@
 ;; rr
 
 (defun encode-record (stream val)
-  (destructuring-bind (rr expiration) val
-    (nibbles:write-ub64/be expiration stream)
-    (encode-rr stream rr)))
+  (let ((blk (xdr-block +block-size+)))
+    (destructuring-bind (rr expiration) val
+      (setf (nibbles:ub64ref/be (xdr-block-buffer blk)
+				      0)
+	    expiration)
+      (incf (xdr-block-offset blk) 8)
+      (encode-rr blk rr))
+    (write-sequence (xdr-block-buffer blk) stream
+		    :end (xdr-block-offset blk))))
 
 (defun decode-record (stream)
-  (let ((expiry (nibbles:read-ub64/be stream))
-	    (rr (decode-rr stream)))
-	(list rr expiry)))
+  (let ((blk (xdr-block +block-size+)))
+    (read-sequence (xdr-block-buffer blk) stream)    
+    (let ((expiry (nibbles:ub64ref/be (xdr-block-buffer blk) 0)))
+      (incf (xdr-block-offset blk) 8)
+      (let ((rr (decode-rr blk)))
+	(list rr expiry)))))
 
 (defun close-dn-db ()
   (when *db* 
