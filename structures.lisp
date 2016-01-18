@@ -5,6 +5,9 @@
 
 (in-package #:dragons)
 
+;; TODO: we need to support compression when encoding
+;; if we have a hope of writing a functioning name server
+
 ;; -------------------------
 
 (defun encode-uint16 (uint16 blk)
@@ -39,7 +42,7 @@
 	    (aref octets i)))
     (incf (xdr-block-offset blk) (length octets))))
 
-(defun decode-s3tring (blk)
+(defun decode-string (blk)
   (let ((len (aref (xdr-block-buffer blk) (xdr-block-offset blk))))
     (incf (xdr-block-offset blk))
     (prog1
@@ -78,11 +81,30 @@
 
 ;; -------------------------
 
+;; special variable that is dynamically rebound for the context of encode-message
+(defvar *pointer-offsets* nil
+  "List of (name offset) forms recording locations of previously encoded names.")
+
 (defun encode-name (name blk)
   "Encode a dotted string name as a list of labels to the stream."
   (do ((pos 0))
       ((>= pos (length name))
        (encode-label "" blk))
+    ;; first we check to see whether we have already written this portion of the
+    ;; name, if so write a pointer and exit
+    (let ((offset (cadr (find (subseq name pos) *pointer-offsets*
+			      :key #'car :test #'string=))))
+      (when offset
+	(break)
+	(encode-uint16 (logior (ash #b11000000 8) offset) blk)
+	(return-from encode-name nil)))
+
+    ;; we are writing ourselves in, record our position
+    (break)
+    (push (list (subseq name pos) (xdr-block-offset blk))
+	  *pointer-offsets*)
+
+    ;; write the name 
     (let ((p (position #\. name :test #'char= :start pos)))
       (cond
         (p
@@ -468,16 +490,17 @@ CLASS ::= the class of query, almost always :IN (internet).
   header questions answers authorities additionals)
 
 (defun encode-message (blk message)
-  (encode-header blk (message-header message))
-  (dolist (q (message-questions message))
-    (encode-question blk q))
-  (dolist (answer (message-answers message))
-    (encode-rr blk answer))
-  (dolist (auth (message-authorities message))
-    (encode-rr blk auth))
-  (dolist (a (message-additionals message))
-    (encode-rr blk a)))
-
+  (let ((*pointer-offsets* nil))
+    (encode-header blk (message-header message))
+    (dolist (q (message-questions message))
+      (encode-question blk q))
+    (dolist (answer (message-answers message))
+      (encode-rr blk answer))
+    (dolist (auth (message-authorities message))
+      (encode-rr blk auth))
+    (dolist (a (message-additionals message))
+      (encode-rr blk a))))
+  
 (defun decode-message (blk)
   (let* ((header (decode-header blk))
 	 (msg (make-message :header header)))
