@@ -8,6 +8,7 @@
 		#:xdr-block-offset 
 		#:xdr-block-count
 		#:make-xdr-block
+		#:reset-xdr-block 
 		#:xdr-block
 		#:encode-uint32
 		#:decode-uint32)  

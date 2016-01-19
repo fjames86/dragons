@@ -294,6 +294,59 @@ so you may read until EOF to extract all the information."))
 (defmethod decode-rdata ((type (eql :ptr)) blk)
   (decode-name blk))
 
+;; ------------------- wks ------------------
+;; section 3.4.2
+
+;; TODO: the bitmap is a bitmap of available ports. So if bit 26 is set,
+;; it means a service on port 25 is available. We should operate on a
+;; list of ports rather than the raw bitmap itself.
+;; (defmethod encode-rdata ((type (eql :wks)) data blk)
+;;   (destructuring-bind (&key addr protocol bmap) data
+;;     ;; address (4 octet inaddr)
+;;     (let ((inaddr (etypecase data
+;; 		    (string (fsocket::dotted-quad-to-inaddr data))
+;; 		    (vector data))))
+;;       (dotimes (i (length inaddr))
+;; 	(setf (aref (xdr-block-buffer blk) (+ (xdr-block-offset blk) i))
+;; 	      (aref inaddr i)))
+;;       (incf (xdr-block-offset blk) (length inaddr)))
+;;     ;; protocol (8-bit IP protocol)
+;;     (let ((p (cond
+;; 	       ((eq protocol :udp) fsocket::+ipproto-udp+)
+;; 	       ((eq protocol :tcp) fsocket::+ipproto-tcp+)
+;; 	       ((not (typep protocol 'integer)) (error "Protocol must be an integer"))
+;; 	       (t protocol))))
+;;       (setf (aref (xdr-block-buffer blk) (xdr-block-offset blk)) p)
+;;       (incf (xdr-block-offset blk)))
+;;     ;; bit map (octet vector)
+;;     (dotimes (i (length bmap))
+;;       (setf (aref (xdr-block-buffer blk) (+ (xdr-block-offset blk) i))
+;; 	    (aref bmap i)))
+;;     (incf (xdr-block-offset blk) (length bmap))))
+
+;; (defmethod decode-rdata ((type (eql :wks)) blk)
+;;   (let (inaddr protocol bmap)
+;;     (setf inaddr (subseq (xdr-block-buffer blk)
+;; 			 (xdr-block-offset blk)
+;; 			 (+ (xdr-block-offset blk) 4)))
+;;     (incf (xdr-block-offset blk) 4)
+;;     (let ((p (aref (xdr-block-buffer blk) (xdr-block-offset blk))))
+;;       (setf protocol
+;; 	    (cond
+;; 	      ((= p fsocket::+ipproto-udp+) :udp)
+;; 	      ((= p fsocket::+ipproto-tcp+) :tcp)
+;; 	      (t p)))
+;;       (incf (xdr-block-offset blk)))
+;;     (setf bmap
+;; 	  (subseq (xdr-block-buffer blk)
+;; 		  (xdr-block-offset blk)
+;; 		  (xdr-block-count blk)))
+;;     (setf (xdr-block-offset blk) (xdr-block-count blk))
+;;     (list :inaddr inaddr :protocol protocol :bmap bmap)))
+				    
+
+
+
 ;; -------------------------------------------
 
 ;; see section 3.3.13
