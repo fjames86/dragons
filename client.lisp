@@ -193,7 +193,6 @@ The resource records contain different data depending on the type/class of resou
 		     (setf (xdr-block-offset blk) 0
 			   (xdr-block-count blk) cnt)
 
-		     (packet:hd (subseq (xdr-block-buffer blk) 0 (xdr-block-count blk)))
 		     (let ((rmsg (decode-message blk)))
 		       
 		       ;; TODO: match the id with the address so we know whether we received from the same

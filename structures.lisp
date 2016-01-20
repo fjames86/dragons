@@ -538,7 +538,6 @@ CLASS ::= the class of query, almost always :IN (internet).
       (encode-rr blk a))))
   
 (defun decode-message (blk)
-  (packet:hd (subseq (xdr-block-buffer blk) 0 (xdr-block-offset blk)))
   (let* ((header (decode-header blk))
 	 (msg (make-message :header header)))
     (setf (message-questions msg)
