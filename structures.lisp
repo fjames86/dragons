@@ -69,14 +69,14 @@
          (values str nil)))
       ((= (logand len #b11000000) #b11000000)
        ;; this is a pointer
-       (let ((offset (logior (ash (logand len #b00111111) 8)
-                             (prog1 (aref (xdr-block-buffer blk) (xdr-block-offset blk))
-			       (incf (xdr-block-offset blk))))))
-	 (let ((v (make-xdr-block :buffer (xdr-block-buffer blk)
-				  :offset offset
-				  :count (xdr-block-count blk))))
-	   (values (decode-name v) t))))
-      (t (error "Invalid pointer header ~B" (logand len #b11000000))))))
+       (let* ((offset (logior (ash (logand len #b00111111) 8)
+			      (prog1 (aref (xdr-block-buffer blk) (xdr-block-offset blk))
+				(incf (xdr-block-offset blk)))))
+	      (v (make-xdr-block :buffer (xdr-block-buffer blk)
+				 :offset offset
+				 :count (xdr-block-count blk))))
+	 (values (decode-name v) t)))
+      (t (error "Invalid pointer header #b~B" (logand len #b11000000))))))
 
 
 ;; -------------------------
@@ -114,35 +114,20 @@
 
 (defun decode-name (blk)
   "Decode a list of labels from the stream. Returns a dotted string."
-  (let ((o (xdr-block-offset blk))
-	(str
-	 (with-output-to-string (s)
-	   (do ((done nil)
-		(first t))
-	       (done)
-	     (multiple-value-bind (label pointer) (decode-label blk)
-	       (when pointer
-		 ;; BUGFIX: I've seen some servers put a bogus pointer
-		 ;; after the first pointer. We check for the pointer header
-		 ;; and if so we read it and discard the value.
-		 (when (< (xdr-block-offset blk) (xdr-block-count blk))
-		   (let ((x (aref (xdr-block-buffer blk) (xdr-block-offset blk))))
-		     (when (eq (logand x #b11000000) #b11000000)
-		       ;;(break)
-		       (format t "bogus pointer~%")
-		       (decode-label blk))))
-		 (setf done t))
-	       (cond
-		 ((null label) (setf done t))
-		 ((string= label "")
-		  (setf done t))
-		 (t 
-		  (unless first (write-char #\. s))
-		  (setf first nil)
-		  (write-string label s))))))))
-    (declare (ignore o))
-    #+nil(format t "decode-name ~A ~A~%" o str)
-    str))
+  (with-output-to-string (s)
+    (do ((done nil)
+	 (first t))
+	(done)
+      (multiple-value-bind (label pointer-p) (decode-label blk)
+	(when pointer-p (setf done t))
+	(cond
+	  ((null label) (setf done t))
+	  ((string= label "")
+	   (setf done t))
+	  (t 
+	   (unless first (write-char #\. s))
+	   (setf first nil)
+	   (write-string label s)))))))
 
 ;; -------------------------
 
@@ -513,7 +498,7 @@ so you may read until EOF to extract all the information."))
 			      class (mapcar #'car *class-codes*)))
 		   blk)))
 
-(defun decode-question (blk)
+(defun decode-question (blk)  
   (let ((name (decode-name blk))
         (type (decode-uint16 blk))
         (class (decode-uint16 blk)))
@@ -553,6 +538,7 @@ CLASS ::= the class of query, almost always :IN (internet).
       (encode-rr blk a))))
   
 (defun decode-message (blk)
+  (packet:hd (subseq (xdr-block-buffer blk) 0 (xdr-block-offset blk)))
   (let* ((header (decode-header blk))
 	 (msg (make-message :header header)))
     (setf (message-questions msg)
