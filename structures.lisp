@@ -56,6 +56,20 @@
 (defun encode-label (string blk)
   (encode-string string blk))
 
+(defun decode-label-pointer (blk)
+  "Same as declde-label but forbid resolving pointers"
+  (let ((len (aref (xdr-block-buffer blk) (xdr-block-offset blk))))
+    (incf (xdr-block-offset blk))
+    (cond
+      ((= len 0) (values nil nil))
+      ((<= len 63)
+       (let ((str (babel:octets-to-string (xdr-block-buffer blk)
+					  :start (xdr-block-offset blk)
+					  :end (+ (xdr-block-offset blk) len))))
+	 (incf (xdr-block-offset blk) len)
+         (values str nil)))
+      (t (error "Attempt to resolve pointer within pointer")))))
+
 (defun decode-label (blk)
   (let ((len (aref (xdr-block-buffer blk) (xdr-block-offset blk))))
     (incf (xdr-block-offset blk))
@@ -75,43 +89,59 @@
 	      (v (make-xdr-block :buffer (xdr-block-buffer blk)
 				 :offset offset
 				 :count (xdr-block-count blk))))
-	 (values (decode-name v) t)))
+	 (values (decode-name-pointer v) t)))
       (t (error "Invalid pointer header #b~B" (logand len #b11000000))))))
 
 
 ;; -------------------------
 
-;; special variable that is dynamically rebound for the context of encode-message
-(defvar *pointer-offsets* nil
-  "List of (name offset) forms recording locations of previously encoded names.")
+;;(defvar *pointer-offsets* nil "List of (name offset) forms recording locations of previously encoded names.")
 
 (defun encode-name (name blk)
   "Encode a dotted string name as a list of labels to the stream."
-  (do ((pos 0))
-      ((>= pos (length name))
-       (encode-label "" blk))
-    ;; first we check to see whether we have already written this portion of the
-    ;; name, if so write a pointer and exit
-    (let ((offset (cadr (find (subseq name pos) *pointer-offsets*
-			      :key #'car :test #'string=))))
-      (when offset
-	(encode-uint16 (logior (ash #b11000000 8) offset) blk)
-	(return-from encode-name nil)))
+  (let ((*pointer-offsets* nil))
+    (declare (special *pointer-offsets*))
+    (do ((pos 0))
+	((>= pos (length name))
+	 (encode-label "" blk))
+      ;; first we check to see whether we have already written this portion of the
+      ;; name, if so write a pointer and exit
+      (let ((offset (cadr (find (subseq name pos) *pointer-offsets*
+				:key #'car :test #'string=))))
+	(when offset
+	  (encode-uint16 (logior (ash #b11000000 8) offset) blk)
+	  (return-from encode-name nil)))
+      
+      ;; we are writing ourselves in, record our position
+      (push (list (subseq name pos) (xdr-block-offset blk))
+	    *pointer-offsets*)
+      
+      ;; write the name 
+      (let ((p (position #\. name :test #'char= :start pos)))
+	(cond
+	  (p
+	   (encode-label (subseq name pos p) blk)
+	   (setf pos (1+ p)))
+	  (t 
+	   (encode-label (subseq name pos) blk)
+	   (setf pos (length name))))))))
 
-    ;; we are writing ourselves in, record our position
-    (push (list (subseq name pos) (xdr-block-offset blk))
-	  *pointer-offsets*)
-
-    ;; write the name 
-    (let ((p (position #\. name :test #'char= :start pos)))
-      (cond
-        (p
-         (encode-label (subseq name pos p) blk)
-         (setf pos (1+ p)))
-        (t 
-         (encode-label (subseq name pos) blk)
-         (setf pos (length name)))))))
-
+(defun decode-name-pointer (blk)
+  "Decode a list of labels from the stream. Returns a dotted string."
+  (with-output-to-string (s)
+    (do ((done nil)
+	 (first t))
+	(done)
+      (let ((label (decode-label-pointer blk)))
+	(cond
+	  ((null label) (setf done t))
+	  ((string= label "")
+	   (setf done t))
+	  (t 
+	   (unless first (write-char #\. s))
+	   (setf first nil)
+	   (write-string label s)))))))
+  
 (defun decode-name (blk)
   "Decode a list of labels from the stream. Returns a dotted string."
   (with-output-to-string (s)
@@ -213,10 +243,11 @@ so you may read until EOF to extract all the information."))
   (let ((inaddr (etypecase data
 		  (string (fsocket::dotted-quad-to-inaddr data))
 		  (vector data))))
-    (dotimes (i (length inaddr))
+    (assert (= (length inaddr) 4))
+    (dotimes (i 4)
       (setf (aref (xdr-block-buffer blk) (+ (xdr-block-offset blk) i))
 	    (aref inaddr i)))
-    (incf (xdr-block-offset blk) (length inaddr))))
+    (incf (xdr-block-offset blk) 4)))
 
 ;; don't provide a method for decoding Address types because it's just a vector which is the same as the default method
 
@@ -385,7 +416,7 @@ so you may read until EOF to extract all the information."))
       (incf (xdr-block-offset blk) 2)
       (encode-rdata type rdata blk)
       (setf (nibbles:ub16ref/be (xdr-block-buffer blk) offset)
-	    (- (xdr-block-offset blk) offset)))))
+	    (- (xdr-block-offset blk) offset 2)))))
 
 (defun decode-rr (blk)
   (let (name type class ttl len)
@@ -527,6 +558,7 @@ CLASS ::= the class of query, almost always :IN (internet).
 
 (defun encode-message (blk message)
   (let ((*pointer-offsets* nil))
+    (declare (special *pointer-offsets*))
     (encode-header blk (message-header message))
     (dolist (q (message-questions message))
       (encode-question blk q))

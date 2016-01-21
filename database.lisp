@@ -25,7 +25,9 @@
 				      0)
 	    expiration)
       (incf (xdr-block-offset blk) 8)
-      (encode-rr blk rr))
+      (let ((*pointer-offsets* nil))
+	(declare (special *pointer-offsets*))
+	(encode-rr blk rr)))
     (write-sequence (xdr-block-buffer blk) stream
 		    :end (xdr-block-offset blk))))
 
@@ -59,7 +61,7 @@
 (defun add-record (rr &optional expiration)
   (open-dn-db)
   (setf (pounds.db:find-entry rr *db*
-                              :test #'rr-eql
+                              :test (lambda (x y) (declare (ignore x y)) nil) ;; #'rr-eql
                               :key #'car)
         (list rr (or expiration #xffffffffffffffff))))
 

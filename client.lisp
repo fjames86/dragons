@@ -130,17 +130,15 @@ The resource records contain different data depending on the type/class of resou
 
 (defun query-db (questions)
   ;; first try and answer the query using the local database
-  (let ((answers
-         (loop :for question :in questions
-            :nconc
-            (let ((rr (find-record (make-rr :name (getf question :name)
-                                            :type (getf question :type)
-                                            :class (getf question :class)
-                                            :ttl 0
-                                            :rdata nil))))
-              (when rr (list rr))))))
-    (when answers
-      (return-from query-db answers))))
+  (let (answers)
+    (dolist (rr (list-records))
+      (dolist (q questions)
+	(destructuring-bind (&key name type class) q
+	  (when (and (string-equal name (rr-name rr))
+		     (eq type (rr-type rr))
+		     (eq class (rr-class rr)))
+	    (push rr answers)))))
+    answers))
 
 (defun query-multiple (questions addresses &optional timeout)
   ;; allocate socket and poll decscriptor
