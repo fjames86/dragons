@@ -282,44 +282,6 @@ The resource records contain different data depending on the type/class of resou
 	     nil)))
        (values answers auths adds qus raddr)))))
 
-
-;; ------------------- Inverse queries -----------------------------
-
-(defun answer (rdata &optional (type :a) (class :in))
-  (make-rr :name ""
-           :type type
-           :class class
-           :ttl 0
-           :rdata rdata))
-
-(defun iquery (answers &key addr timeout (protocol :udp))
-  "Send a DNS inverse query to the DNS specified by ADDR or the first of *DNS-ADDRS*.
-ANSWERS ::= a list of answers, as returned by ANSWER.
-TIMEOUT ::= time to wait for a reply.
-PROTOCOL ::= protocol to send the quest, :UDP or :TCP.
-Returns (values answer* authority* addtitional* question*) with
-ANSWER, AUTHORITY, ADDITIONAL ::= resource record (RR) instances
-QUESTION ::= question instance.
-The resource records contain different data depending on the type/class of resource, access the RDATA slot for the data. 
-"
-  (when (rr-p answers) 
-    (setf answers (list answers)))
-  
-  (let ((qmessage (message nil :opcode :iquery :answers answers)))
-    (let ((message 
-           (ecase protocol
-             (:udp (query-udp (or addr (car *dns-addrs*)) qmessage timeout))
-             (:tcp (query-tcp (or addr (car *dns-addrs*)) qmessage timeout)))))
-      (unless message (error 'dns-error :stat "Timeout"))
-      ;; if the header stat is not OK then an error occured
-      (unless (eq (header-rcode (message-header message)) :ok)
-        (error 'dns-error :stat (header-rcode (message-header message))))
-      (values (message-answers message)
-              (message-authorities message)
-              (message-additionals message)
-              (message-questions message)))))
-
-
 ;; ------------------- Useful wrappers ---------------------
 
 (defun get-host-by-name (name)
@@ -345,6 +307,5 @@ Returns a list of strings for known hostnames."
                     (aref (fsocket:sockaddr-in-addr addr) 0))))
     (mapcar (lambda (rr)
               (rr-rdata rr))
-            (query (question (format nil "~A.in-addr.arpa" dq)
-                             :ptr)))))
+            (query (question (format nil "~A.in-addr.arpa" dq) :ptr)))))
 

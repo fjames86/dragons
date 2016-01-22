@@ -70,7 +70,7 @@
          (values str nil)))
       (t (error "Attempt to resolve pointer within pointer")))))
 
-(defun decode-label (blk)
+(defun decode-label (blk rdepth)
   (let ((len (aref (xdr-block-buffer blk) (xdr-block-offset blk))))
     (incf (xdr-block-offset blk))
     (cond
@@ -89,7 +89,14 @@
 	      (v (make-xdr-block :buffer (xdr-block-buffer blk)
 				 :offset offset
 				 :count (xdr-block-count blk))))
-	 (values (decode-name-pointer v) t)))
+	 ;; FIXME: this is potentially recursive if someone sent us a malformed message.
+	 ;; We cannot forbid resolving pointers when already resolving pointers
+	 ;; because it seems some servers return such messages.
+	 ;; TODO: prevent infinitely recursive pointer resolution. We could
+	 ;; keep a list of pointers we have resolved so far, or pass a recursion depth
+	 ;; as a parameter.
+	 (when (>= rdepth 10) (error "Maximum pointer recursion depth"))
+	 (values (decode-name v (1+ rdepth)) t))) ;;(decode-name-pointer v) t)))
       (t (error "Invalid pointer header #b~B" (logand len #b11000000))))))
 
 
@@ -142,13 +149,13 @@
 	   (setf first nil)
 	   (write-string label s)))))))
   
-(defun decode-name (blk)
+(defun decode-name (blk &optional (rdepth 0))
   "Decode a list of labels from the stream. Returns a dotted string."
   (with-output-to-string (s)
     (do ((done nil)
 	 (first t))
 	(done)
-      (multiple-value-bind (label pointer-p) (decode-label blk)
+      (multiple-value-bind (label pointer-p) (decode-label blk rdepth)
 	(when pointer-p (setf done t))
 	(cond
 	  ((null label) (setf done t))

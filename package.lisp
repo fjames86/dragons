@@ -14,9 +14,7 @@
 		#:decode-uint32)  
   (:nicknames #:dns)
   (:export #:query
-           #:iquery
            #:question
-           #:answer
            #:*dns-addrs*
            #:dns-error
 
