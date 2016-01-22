@@ -184,6 +184,7 @@
     (:minfo 14)
     (:mx 15)
     (:txt 16)
+    (:aaaa 28)
     (:srv 33)
     (:axfr 252)
     (:mailb 253)
@@ -257,6 +258,30 @@ so you may read until EOF to extract all the information."))
     (incf (xdr-block-offset blk) 4)))
 
 ;; don't provide a method for decoding Address types because it's just a vector which is the same as the default method
+
+;; ----------- aaaa -----------------
+
+(defmethod encode-rdata ((type (eql :aaaa)) data blk)
+  (let ((buffer (xdr-block-buffer blk))
+	(offset (xdr-block-offset blk)))
+    (dotimes (i 8)
+      (let ((u16 (aref data i)))
+	(setf (aref buffer (+ offset (* 2 i)))
+	      (logand (ash u16 -8) #xff)
+	      (aref buffer (+ offset 1 (* 2 i)))
+	      (logand u16 #xff))))
+    (incf (xdr-block-offset blk) 16)))
+
+(defmethod decode-rdata ((type (eql :aaaa)) blk)
+  (let ((inaddr6 (make-array 8))
+	(buffer (xdr-block-buffer blk))
+	(offset (xdr-block-offset blk)))
+    (dotimes (i 8)
+      (setf (aref inaddr6 i)
+	    (logior (ash (aref buffer (+ offset (* i 2))) 8)
+		    (aref buffer (+ offset 1 (* i 2))))))
+    (incf (xdr-block-offset blk) 16)
+    inaddr6))
 
 ;; ----------- ns -----------------
 
@@ -372,16 +397,16 @@ so you may read until EOF to extract all the information."))
 
 ;; -------------------------------------------
 
-;; see section 3.3.13
+;; see rfc1035 section 3.3.13
 
 (defmethod encode-rdata ((type (eql :soa)) data blk)
   (encode-name (getf data :mname) blk)
   (encode-name (getf data :rname) blk)
-  (encode-uint32 (getf data :serial) blk)
-  (encode-uint32 (getf data :refresh) blk)
-  (encode-uint32 (getf data :retry) blk)
-  (encode-uint32 (getf data :expire) blk)
-  (encode-uint32 (getf data :minumum) blk))
+  (encode-uint32 blk (getf data :serial))
+  (encode-uint32 blk (getf data :refresh))
+  (encode-uint32 blk (getf data :retry))
+  (encode-uint32 blk (getf data :expire))
+  (encode-uint32 blk (getf data :minimum)))
 
 (defmethod decode-rdata ((type (eql :soa)) blk)
   (list :mname (decode-name blk)
