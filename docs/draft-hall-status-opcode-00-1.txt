@@ -1,0 +1,438 @@
+
+
+  Internet Draft                                             Eric A. Hall 
+  Document: draft-hall-status-opcode-00-1.txt                  Consultant 
+  Expires: April, 2002                                       October 2001 
+      
+      
+                           The DNS "Status" OPCODE 
+      
+      
+     Status of this Memo 
+      
+     This document is an Internet-Draft and is in full conformance with 
+     all provisions of Section 10 of RFC2026.  
+      
+     Internet-Drafts are working documents of the Internet Engineering 
+     Task Force (IETF), its areas, and its working groups. Note that 
+     other groups may also distribute working documents as Internet-
+     Drafts. 
+      
+     Internet-Drafts are draft documents valid for a maximum of six 
+     months and may be updated, replaced, or obsoleted by other 
+     documents at any time. It is inappropriate to use Internet-Drafts 
+     as reference material or to cite them other than as "work in 
+     progress." 
+      
+     The list of current Internet-Drafts can be accessed at 
+          http://www.ietf.org/ietf/1id-abstracts.txt 
+     The list of Internet-Draft Shadow Directories can be accessed at 
+          http://www.ietf.org/shadow.html. 
+      
+      
+  1.      Abstract 
+      
+     RFC 1034 defined the DNS OPCODE value of "2" as "status," but the 
+     description for the status OPCODE only says "to be defined." This 
+     document defines a use for the status OPCODE which allows 
+     administrators to query a specific DNS server, and to retrieve a 
+     snapshot "profile" for the status of the zones which are currently 
+     being served by that server. 
+      
+     The information provided by this query type is different from the 
+     data provided through normal "in-band" DNS queries, and is 
+     primarily intended to benefit the operators of large-scale DNS 
+     installations with complex replication and caching configurations. 
+      
+   
+   
+  Internet Draft    draft-hall-status-opcode-00-1.txt     October 2001 
+   
+   
+      
+     Table of Contents 
+      
+     1.   Abstract..................................................1 
+     2.   Overview..................................................2 
+     3.   Status Query Messages.....................................3 
+       3.1.  Header Values..........................................3 
+       3.2.  The Question Section...................................3 
+     4.   Status Response Messages..................................4 
+       4.1.  Header Values..........................................4 
+       4.2.  The Question Section...................................6 
+       4.3.  The Answer Section.....................................6 
+       4.4.  The Authority Section..................................8 
+       4.5.  The Additional-Data Section............................8 
+     5.   Transport Issues..........................................8 
+     6.   Security Considerations...................................9 
+      
+      
+  2.      Overview 
+      
+     This protocol is NOT intended to reproduce the information which 
+     is currently available through traditional DNS queries for Start-
+     of-Authority and Name Server resource records. Instead, this 
+     mechanism is intended to facilitate improved zone management 
+     through the provision of a standardized protocol for the retrieval 
+     of server-specific zone configuration data. 
+      
+     The protocol defined in this document provides a simple set of 
+     mechanisms for querying a server for information about the zones 
+     that server is currently configured to serve. Queries can identify 
+     specific zones, or can request status information about all of the 
+     zones which are currently configured on that server. 
+      
+     The response information includes details such as the current 
+     status of the zone, and the replication partners associated with 
+     that server's copy of the zone (which may be different from the 
+     in-zone authoritative server list). Each response is encapsulated 
+     as a separate DNS message with its own flags, thereby allowing a 
+     server to generate unique responses for each zone. Responses can 
+     indicate that the zone is operating "normally" with a specific 
+     version, that the zone is inaccessible (SERVFAIL), or that the 
+     client is not allowed to query the specified zone (REFUSED), among 
+     other responses. 
+      
+   
+  Hall                   I-D Expires: April 2002              [page 2] 
+  Internet Draft    draft-hall-status-opcode-00-1.txt     October 2001 
+   
+   
+      
+  3.      Status Query Messages 
+      
+     Status query messages follow the same basic model as most other 
+     query types, although there are some unique qualities. 
+      
+      
+  3.1.    Header Values 
+      
+     Each unique query is required to be identified with a reasonably 
+     unique Message-ID. Response messages will echo the Message-ID 
+     value, providing a rudimentary query-response matching service. 
+      
+     The QR flag MUST be set to "0" on queries, signifying that the 
+     message is a query. 
+      
+     The OPCODE field MUST be set to "2", signifying that the message 
+     is a status message. 
+      
+     The AA, TC, RD and RA flags MUST be set to "0" for the query 
+     messages. Note that status messages are only valid when sent 
+     directly to a server, and recursion is expressly forbidden. 
+     Servers which receive status messages MUST NOT forward the message 
+     or initiate recursion on behalf of the client, regardless of the 
+     state of the RD flag. 
+      
+     The RCODE field MUST be set to "0" in status queries. 
+      
+     The QDCOUNT value MUST reflect the number of zones being 
+     requested, as identified by the number of entries in the Question 
+     Section. Valid values for this field are either "0" or "1". 
+      
+     The ANCOUNT, NSCOUNT and ARCOUNT values MUST be "0" in status 
+     queries. The Answer, Authority and Additional-Data sections MUST 
+     be empty in status query messages. 
+      
+      
+  3.2.    The Question Section 
+      
+     Clients may request information about all of the zones on a 
+     server, or may request information about one particular zone. 
+      
+     A query which contains an empty (non-existent) question section 
+     (with a QDCOUNT of "0") is used to request information about all 
+     of the zones configured on that server. The queried server MAY 
+     respond with a single message (signifying an error, or that there 
+   
+  Hall                   I-D Expires: April 2002              [page 3] 
+  Internet Draft    draft-hall-status-opcode-00-1.txt     October 2001 
+   
+   
+     is only one configured zone on that server), or MAY respond with 
+     multiple messages (one response message for each configured zone). 
+      
+     Queries MAY identify a specific zone by providing the domain name 
+     for that zone in the question section. 
+      
+     Multiple zones MUST NOT be specified in a single query. If status 
+     information for multiple discrete zones is desired, each zone MUST 
+     be identified in its own status query message, and with a unique 
+     Message-ID value in the message header. 
+      
+     When a zone is specified, the resource record code of "0" MUST be 
+     specified, although the class code MAY be set to any class value 
+     (the status OPCODE is a global DNS OPCODE, and is not specific to 
+     the IN class). 
+      
+      
+  4.      Status Response Messages 
+      
+     Status response messages follow the same basic model as most other 
+     response types, although there are some unique qualities. 
+      
+     In particular, each status response generated from a status query 
+     MUST be sent as a separate, standalone message. 
+      
+      
+  4.1.    Header Values 
+      
+     Response messages MUST echo the Message-ID value provided in the 
+     associated query message. 
+      
+     The QR flag MUST be set to "1", signifying that the message is a 
+     response. 
+      
+     The OPCODE field MUST be set to "2", signifying that the message 
+     is a status message. 
+      
+     The AA flag is used to signify whether or not the server is 
+     authoritative for the zone specified by this message. If the 
+     server believes that it is authoritative for the zone, it MUST 
+     specify a value of "1" in the AA flag. If the server does not 
+     believe that it is authoritative for the zone (perhaps it is a 
+     caching-only server for that zone), then it MUST specify a value 
+     of "0" in the AA flag. 
+      
+   
+  Hall                   I-D Expires: April 2002              [page 4] 
+  Internet Draft    draft-hall-status-opcode-00-1.txt     October 2001 
+   
+   
+     The TC flag MUST be enabled if the server was unable to fit a 
+     complete response in the message. This should rarely occur. 
+      
+     The RD and RA flags MUST be set to "0" for the response messages. 
+      
+     The value of the RCODE field will be determined by the disposition 
+     status of the query in relation to the zone information being 
+     provided in the message. The appropriate values and their meaning 
+     are as follows: 
+      
+        0   The specified zone exists and appears to be operational. 
+      
+        1   Format Error - there was a problem with the status query. 
+      
+        2   Server Failure û the server is unable to load the specified 
+            zone. This normally indicates an error with the zone 
+            database itself, or a communications error with a 
+            replication partner. 
+      
+        3   Non-Existent Domain û the server cannot locate the 
+            specified zone. If no zones are provided, this response 
+            code indicates that the server is only functioning as a 
+            cache, and that it is not configured to serve any zones. 
+      
+        4   Not Implemented û the server doesn't understand the query. 
+      
+        5   Query Refused û the client is not authorized to view 
+            information about the specified zone. If no zones are 
+            provided, the client is not authorized to request 
+            information about all of the zones. Note that this is 
+            different from telling the client that it is not authorized 
+            to request ANY zone (which it may be), but that it is not 
+            authorized to request information about ALL of the zones 
+            which are configured on that server. 
+      
+     Note that the RCODE field and AA flag can interact in significant 
+     ways. For example, if the AA flag is enabled but the RCODE is set 
+     to SERVFAIL, then the server is authoritative for the specified 
+     zone, but the zone database is currently unavailable on that 
+     server (possibly due to expiration). 
+      
+     The QDCOUNT, ANCOUNT, NSCOUNT and ARCOUNT values will vary 
+     according to the number of entries provided in each section. Note 
+     that the QDCOUNT field does not echo the value from the associated 
+     query message. 
+      
+   
+  Hall                   I-D Expires: April 2002              [page 5] 
+  Internet Draft    draft-hall-status-opcode-00-1.txt     October 2001 
+   
+   
+      
+  4.2.    The Question Section 
+      
+     The Question Section MUST contain the domain name of the zone 
+     specified by the current response message. If the response message 
+     applies to all of the zones on that server, the question section 
+     MUST be empty (non-existent). Each response message which is 
+     triggered is likely to have a different Question Section. 
+      
+     For example, if the queried server is a caching-only server which 
+     is only configured to use the root zone, the Question Section of 
+     the response message would specify the root domain (with a zero-
+     length domain name). 
+      
+     Similarly, if the queried server was not configured with any 
+     zones, the question section would be empty. Furthermore, if the 
+     queried server refused to answer a query for all zones, then the 
+     question section would also be empty. 
+      
+     Note that the Question Section of a response message does not 
+     signify any relationship with the associated query message. The 
+     Question Section of the two messages may be identical, but this 
+     will only be a matter of coincidence. Because of this, the 
+     Message-ID value will be the only in-band indication of any 
+     relationship between a query and a response message pair. 
+      
+      
+  4.3.    The Answer Section 
+      
+     The Answer Section consists of two units of data: a mandatory 
+     Start-of-Authority resource record which identifies the server's 
+     current view of the zone, and an optional Text resource record 
+     which conveys the server's zone-configuration data. 
+      
+      
+  4.3.1.  Start-of-Authority 
+      
+     If the Question Section of the response message contains a domain 
+     name, the Answer Section MUST contain the Start-of-Authority 
+     resource record associated with that zone, where this is possible. 
+     If the Start-of-Authority resource record is inaccessible to the 
+     queried server, it can only be presumed that the entire zone is 
+     inaccessible to that server, so the RCODE field of the response 
+     message MUST be set to SERVFAIL. If the question section is empty, 
+     there is no associated Start-of-Authority resource record, so this 
+     requirement is waived in that situation. 
+   
+  Hall                   I-D Expires: April 2002              [page 6] 
+  Internet Draft    draft-hall-status-opcode-00-1.txt     October 2001 
+   
+   
+      
+     If a server is authoritative for the zone, the Start-of-Authority 
+     resource record MUST be sourced from that server's copy of the 
+     zone. If a server is non-authoritative for the zone (is only 
+     configured as a caching agent for the zone), the Start-of-
+     Authority resource record MUST come from the local cache if it 
+     exists, and MUST be queried for separately if it is not cached. 
+      
+     The network class for the Start-of-Authority resource record MUST 
+     be specified according to the network class being reported. If a 
+     zone exists as multiple classes simultaneously, each instance MUST 
+     be specified in a separate message. 
+      
+      
+  4.3.2.  Configuration Data 
+      
+     Any additional configuration data which might be associated with 
+     the zone specified in the Question Section MAY be provided in a 
+     single Text resource record in the Additional-Data section of the 
+     response message. Due to the sensitivity of this information, the 
+     inclusion of this information SHOULD be selectively definable by 
+     the server administrator. 
+      
+     If the data is provided, it MUST be read from the configuration 
+     repository as-is, without undergoing any formatting or charset 
+     conversion. In-line data [such as Tab (0x09)] MUST be preserved, 
+     where possible. 
+      
+     The charset which is used by the server to read and store the 
+     configuration data MUST be specified on the first line of the text 
+     block, using a "MIME-charset:" prefix, using one of the valid 
+     charset identifiers from the IANA repository. If any transfer 
+     encoding is required to fit the data within DNS' eight-bit format, 
+     this conversion MUST be specified in the "MIME-charset:" field. If 
+     these conditions cannot be met, the Text resource record MUST NOT 
+     be provided. 
+      
+     Each line of data included in the Text resource record must be 
+     terminated with a Carriage-Return/Linefeed pair (0x0D 0x0A). 
+      
+     No additional conversion or formatting is allowed. 
+      
+     Note that it is neither possible nor permitted to return global 
+     configuration data. Only configuration data related to a specific 
+     zone is retrievable through this optional service. If global 
+   
+  Hall                   I-D Expires: April 2002              [page 7] 
+  Internet Draft    draft-hall-status-opcode-00-1.txt     October 2001 
+   
+   
+     configuration data is required, an external mechanism will need to 
+     be used. 
+      
+      
+  4.4.    The Authority Section 
+      
+     If the zone specified in the Question Section has associated Name 
+     Server resource records, those resource records MUST be itemized 
+     in the Authority Section of the response message. 
+      
+     These resource records SHOULD reflect the server's current view of 
+     the zone. If the server is currently operating from a "hints" file 
+     or some other hard cache, those values should be used for this 
+     data. Similarly, if the server is working from an in-memory view 
+     of learned Name Server resource records, those values should be 
+     used. New queries MUST NOT be issued for the sole purpose of 
+     seeding these resource records. 
+      
+     Each Name Server resource record MUST reflect the current time-to-
+     live value associated with the entry in the server's cache. 
+      
+     The data provided in the Authority Section of the response message 
+     MUST NOT be cached by the client, MUST NOT be used to update the 
+     client's cache, and MUST be discarded by the client immediately 
+     after it is passed to the calling application. 
+      
+      
+  4.5.    The Additional-Data Section 
+      
+     For each Name Server resource record provided in the Authority 
+     Section, an associated address resource record (A, AAAA, A6) MUST 
+     be provided in the Additional-Data section. This information 
+     SHOULD come from the server's cache, but each resource record MAY 
+     be queried for separately if it has not been cached. 
+      
+     Each address resource record MUST reflect the current time-to-live 
+     value associated with the entry in the server's cache. 
+      
+     The data provided in the Additional-Data Section of the response 
+     message MUST NOT be cached by the client, MUST NOT be used to 
+     update the client's cache, and MUST be discarded by the client 
+     immediately after it is passed to the calling application. 
+      
+      
+  5.      Transport Issues 
+      
+   
+  Hall                   I-D Expires: April 2002              [page 8] 
+  Internet Draft    draft-hall-status-opcode-00-1.txt     October 2001 
+   
+   
+     Either UDP or TCP MAY be used for the status transaction. 
+     Regardless of which transport protocol is used, each response MUST 
+     be provided in a separate DNS message. 
+      
+      
+  6.      Security Considerations 
+      
+     Without due caution, status queries can expose operational 
+     topologies in a manner which is undesirable. For this reason, 
+     support for the status query on any given server MUST be OPTIONAL. 
+      
+     In recognition of the above concerns, the status query MUST NOT be 
+     forwarded by DNS servers, as this could allow a malicious user to 
+     leverage a trust relationship between two servers in order to gain 
+     information which was not available to them directly. For example, 
+     if Server-A allows status queries from the network which holds 
+     Server-B, then a malicious user could send a status query to 
+     Server-B with the recursion desired flag enabled, and Server-A 
+     could eventually receive the query and respond to it. In order to 
+     prevent this scenario, status queries MUST NOT be forwarded, 
+     regardless of the setting of the RD flag. 
+      
+     Implementations are encouraged to disable this service by default. 
+     Implementers MAY allow administrators to selectively enable the 
+     status query on a per-zone basis, MAY allow administrators to 
+     restrict query processing to specific networks or hosts, and MAY 
+     allow administrators to choose the amount of detail returned in 
+     the Additional-Data Text resource records. But at the very least, 
+     administrators MUST be allowed to enable or disable support for 
+     the status query on a global basis. 
+      
+      
+   
+  Hall                   I-D Expires: April 2002              [page 9] 
