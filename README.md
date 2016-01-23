@@ -24,8 +24,11 @@ These are how the DNS returns information from the query.
 #### 2.1.1 Resource type RDATA 
 
 * :A (address) a octet vector storing the IP address
+* :AAAA 
 * :CNAME (canonical name) a string naming an alias for the name in the record
 * :SRV (service record) a plist with fields :PRIORITY :PORT :WEIGHT :TARGET
+* :SOA
+* :PTR
 
 For all other types the RDATA slot contains an opaque octet vector as returned by the DNS response. 
 
@@ -39,6 +42,8 @@ CL-USER> (dragons:query (dragons:question "google.com"))
 
 ### 2.3 Inverse queries
 
+* NOTE: inverse queries are deprecated and have been removed from the Dragons API.
+
 Use `IQUERY` function with one or more answers. The DNS will return the questions which result with those answers.
 Not all DNS servers support inverse queries.
 
@@ -48,7 +53,10 @@ CL-USER> (dragons:iquery (dragons:answer #(216 258 10 100)))
 
 ### 2.4 Get host by name
 
-Equivalents to gethostbyname and gethostbyaddr are `get-host-by-name` and `get-host-by-addr`:
+Equivalents to the canonical gethostbyname and gethostbyaddr libresolv functions are `get-host-by-name` and `get-host-by-addr`:
+
+* `GET-HOST-BY-NAME` takes a string domain name and returns a list of SOCKADDR-IN instances.
+* `GET-HOST-BY-ADDR` takes a SOCKADDR-IN and returns a list of domain names.
 
 ```
 ;; Resolve a hostname to an internet address
@@ -67,7 +75,7 @@ CL-USER> (dns:get-host-by-addr (car *))
 the protocol parameter to the `QUERY` function.
 
 * The default address of the DNS server is retrieved by calling `FSOCKET:GET-NAME-SERVERS`. You can choose
-a different address by either providing one as the `ADDR` parameter to `QUERY` or by setting `*DNS-ADDR*`.
+a different address by either providing one as the `ADDR` parameter to `QUERY` or by setting `*DNS-ADDRS*`.
 
 * The default database path is to the current home directory, but this can be changed by modifying `*DATABASE-PATH*
 before calling any other functions. The database is opened on the first call.
@@ -138,7 +146,7 @@ NIL
 If the DNS server returns an error status, a `DNS-ERROR` will be signalled. If UDP is used and no response
 is received within `TIMEOUT` seconds, an error indicating a timeout has occured is signalled.
 
-## 4. Database
+## 4. Database (resource record cache)
 To reduce the number of queries that must be made over the network, a persistent cache is used
 to store records. This file is created by the file named by `*DATABASE-PATH*` its first usage.
 By default this is named by `(merge-pathnames "dragons.dat" (user-homedir-pathname))`, you should change this
@@ -156,11 +164,21 @@ You may delete an entry
 CL-USER> (dns:remove-record "foo.com" "bar.com" :cname)
 ```
 
+## 5. Name server
+A recursive authoritative name server is defined in server.lisp, it is currently a work in progress.
+
+TODO:
+* Keep testing an using it
+* Improve performance when large number of zones and large number of entries in zones
+* Improve performance by looking up in cache before initiating recursive queries
+* Support other opcodes such as STATUS queries, NOTIFY etc.
+* Support running as a non-authoritative server.
+
 ## 5. TODO
 - [x] Support SRV queries.
-- [ ] Decode all the flags properly.
+- [x] Decode all the flags properly.
 - [x] Some sort of cache, possibly persistent.
-- [ ] Long term: write a DNS server.
+- [ ] Long term: write a DNS server (in progress, January 2016).
 
 ## 6. License
 Licensed under the terms of the MIT License.
