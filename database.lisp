@@ -13,13 +13,14 @@
 ;; Reserving e.g. 1k per entry seems excessive (or is it?)
 ;; Otherwise we'd need to be able to store variable length records, which is a pain.
 (defconstant +block-size+ 1024)
+(defconstant +block-data+ 1016)
 
 ;; each record is:
 ;; expiry uint64
 ;; rr
 
 (defun encode-record (stream val)
-  (let ((blk (xdr-block +block-size+)))
+  (let ((blk (xdr-block +block-data+)))
     (destructuring-bind (rr expiration) val
       (setf (nibbles:ub64ref/be (xdr-block-buffer blk)
 				      0)
@@ -32,7 +33,7 @@
 		    :end (xdr-block-offset blk))))
 
 (defun decode-record (stream)
-  (let ((blk (xdr-block +block-size+)))
+  (let ((blk (xdr-block +block-data+)))
     (read-sequence (xdr-block-buffer blk) stream)    
     (let ((expiry (nibbles:ub64ref/be (xdr-block-buffer blk) 0)))
       (incf (xdr-block-offset blk) 8)
