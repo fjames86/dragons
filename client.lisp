@@ -287,24 +287,23 @@ The resource records contain different data depending on the type/class of resou
 (defun get-host-by-name (name)
   "Resolve a hostname into a list of SOCKADDR-IN addresses.
 NAME ::= string hostname.
-Returns a list of FSOCKET:SOCKADDR-IN addresses."
+Returns a list of 4-octet vectors containing the internet address."
   (declare (type string name))
-  (mapcar (lambda (rr)
-            (fsocket:make-sockaddr-in :addr (rr-rdata rr)))
-          (query (question name))))
+  (mapcar #'rr-rdata (query (question name))))
 
 (defun get-host-by-addr (addr)
   "Resolve an internet address into a list of hostnames.
-ADDR ::= either a string representing a dotted quad or a FSOCKET:SOCKADDR-IN address
+ADDR ::= 
 Returns a list of strings for known hostnames."
   (etypecase addr
-    (string (setf addr (fsocket:make-sockaddr-in :addr (fsocket::dotted-quad-to-inaddr addr))))
-    (fsocket:sockaddr-in nil))
+    (string
+     (setf addr (fsocket::dotted-quad-to-inaddr addr)))
+    (vector nil))
   (let ((dq (format nil "~A.~A.~A.~A"
-                    (aref (fsocket:sockaddr-in-addr addr) 3)
-                    (aref (fsocket:sockaddr-in-addr addr) 2)
-                    (aref (fsocket:sockaddr-in-addr addr) 1)
-                    (aref (fsocket:sockaddr-in-addr addr) 0))))
+                    (aref addr 3)
+                    (aref addr 2)
+                    (aref addr 1)
+                    (aref addr 0))))
     (mapcar (lambda (rr)
               (rr-rdata rr))
             (query (question (format nil "~A.in-addr.arpa" dq) :ptr)))))
