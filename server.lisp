@@ -23,7 +23,9 @@
 		#:header-qr
 		#:header-opcode
 		#:make-rr)
-  (:export #:defzone))
+  (:export #:defzone
+	   #:start-server
+	   #:stop-server))
 
 (in-package #:dragons-server)
 
@@ -224,28 +226,36 @@ Returns a list of RR structs for each additional record that should be returned.
 	   (t
 	    ;; no answers, try calling the next nameserver which should be
 	    ;; listed in the authorities
-	    (dns-log :debug "[~A] No answers"
-		     (header-id (message-header msg)))
-	    (let* ((auths (message-authorities msg))
-		   (adds (message-additionals msg))
-		   (ns (find :ns auths :key #'rr-type))
-		   (nsadd (find (rr-rdata ns) adds
-				:test #'string-equal
-				:key #'rr-name))
-		   (rmsg (message (message-questions msg)
-				  :qr :query :opcode :query :rd-p nil))
-		   (blk (server-blk server)))
-	      (when nsadd
-		(reset-xdr-block blk)
-		(encode-message blk rmsg)
-		(fsocket:socket-sendto (server-fd server)
-				       (xdr-block-buffer blk)
-				       (fsocket:sockaddr-in (rr-rdata nsadd) +dns-port+)
-				       :start 0 :end (xdr-block-offset blk))
-		(await-reply server (header-id (message-header rmsg))
-			     #'reply-callback (list id raddr)))
+	    (dns-log :debug "[~A] No answers, trying authorities ~{~A ~}"
+		     (header-id (message-header msg))
+		     (mapcar #'rr-name (message-authorities msg)))
+	    (let ((name-server-addresses
+		   (mapcan (lambda (rr)
+			     (when (eq (rr-type rr) :ns)
+			       (let ((addr
+				      (find-if (lambda (rr2)
+						 (and (eq (rr-type rr2) :a)
+						      (string-equal (rr-name rr2)
+								    (rr-rdata rr))))
+					       (message-additionals msg))))
+				 (list addr))))
+			   (message-authorities msg)))
+		  (rmsg (message (message-questions msg)
+				 :qr :query :opcode :query :rd-p nil))
+		  (blk (server-blk server)))
+	      (when name-server-addresses
+		(let ((nsadd (first name-server-addresses)))
+		  (dns-log :trace "Trying ~A ~A" (rr-name nsadd) (rr-rdata nsadd))
+		  (reset-xdr-block blk)
+		  (encode-message blk rmsg)
+		  (fsocket:socket-sendto (server-fd server)
+					 (xdr-block-buffer blk)
+					 (fsocket:sockaddr-in (rr-rdata nsadd) +dns-port+)
+					 :start 0 :end (xdr-block-offset blk))
+		  (await-reply server (header-id (message-header rmsg))
+			       #'reply-callback (list id raddr)))
 		
-		nil)))))
+		nil))))))
       (t
        ;; timedout waiting for a reply. Be silent or send an error reply?
        (dns-log :debug "[~A] Timeout waiting" id)
