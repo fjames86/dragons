@@ -291,11 +291,15 @@ Returns a list of 4-octet vectors containing the internet address."
   (etypecase host
     (null (list #(127 0 0 1))) ;; nil means localhost
     (string
-     (let ((dq (fsocket::dotted-quad-to-inaddr host nil)))
-       (if dq
-	   (list dq)
-	   ;; not a dotted quad, must be a hostname 
-	   (mapcar #'rr-rdata (query (question host))))))
+     (cond
+       ((string-equal host "localhost")
+	(list #(127 0 0 1)))
+       (t 
+	(let ((dq (fsocket::dotted-quad-to-inaddr host nil)))
+	  (if dq
+	      (list dq)
+	      ;; not a dotted quad, must be a hostname 
+	      (mapcar #'rr-rdata (query (question host))))))))
     (vector (list host))
     (fsocket:sockaddr-in
      (list 
