@@ -284,27 +284,33 @@ The resource records contain different data depending on the type/class of resou
 
 ;; ------------------- Useful wrappers ---------------------
 
-(defun get-host-by-name (name)
+(defun get-host-by-name (host)
   "Resolve a hostname into a list of SOCKADDR-IN addresses.
 NAME ::= string hostname.
 Returns a list of 4-octet vectors containing the internet address."
-  (declare (type string name))
-  (mapcar #'rr-rdata (query (question name))))
-
-(defun get-host-by-addr (addr)
-  "Resolve an internet address into a list of hostnames.
-ADDR ::= 
-Returns a list of strings for known hostnames."
-  (etypecase addr
+  (etypecase host
+    (null (list #(127 0 0 1))) ;; nil means localhost
     (string
-     (setf addr (fsocket::dotted-quad-to-inaddr addr)))
-    (vector nil))
-  (let ((dq (format nil "~A.~A.~A.~A"
-                    (aref addr 3)
-                    (aref addr 2)
-                    (aref addr 1)
-                    (aref addr 0))))
-    (mapcar (lambda (rr)
-              (rr-rdata rr))
-            (query (question (format nil "~A.in-addr.arpa" dq) :ptr)))))
+     (let ((dq (fsocket::dotted-quad-to-inaddr host nil)))
+       (if dq
+	   (list dq)
+	   ;; not a dotted quad, must be a hostname 
+	   (mapcar #'rr-rdata (query (question host))))))
+    (vector (list host))
+    (fsocket:sockaddr-in
+     (list 
+      (fsocket:sockaddr-in-addr host)))))
+
+(defun get-host-by-addr (inaddr)
+  "Resolve an internet address into a list of hostnames.
+ADDR ::= either a 4-octet internet address or a string containing the dotted-quad 
+representation of the internet address.
+Returns a list of strings for known hostnames."
+  (mapcar (lambda (rr)
+	    (rr-rdata rr))
+	  (query (question (format nil "~A.in-addr.arpa"
+				   (etypecase inaddr
+				     (string inaddr)
+				     (vector (fsocket::inaddr-to-dotted-quad inaddr))))
+			   :ptr))))
 
