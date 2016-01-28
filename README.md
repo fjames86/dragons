@@ -1,6 +1,8 @@
 # dragons
 This is a Common Lisp DNS client. You can use it to query a DNS server for information, typically to resolve hostnames into IP addresses.
 
+A server is also included. Be aware the server is a work in progress and is likely to be buggy.
+
 ## 1. Introduction
 DNS is the standard system for mapping IP addresses to hostnames. It can also be used for other purposes, such as SRV records which can be used by clients to locate services on the network.
 
@@ -55,8 +57,8 @@ CL-USER> (dragons:iquery (dragons:answer #(216 258 10 100)))
 
 Equivalents to the canonical gethostbyname and gethostbyaddr libresolv functions are `get-host-by-name` and `get-host-by-addr`:
 
-* `GET-HOST-BY-NAME` takes a string domain name and returns a list of SOCKADDR-IN instances.
-* `GET-HOST-BY-ADDR` takes a SOCKADDR-IN and returns a list of domain names.
+* `GET-HOST-BY-NAME` takes a string naming a host and returns a list of internet addresses (vectors of 4 octets).
+* `GET-HOST-BY-ADDR` takes an internet address and returns a list of domain names. 
 
 ```
 ;; Resolve a hostname to an internet address
@@ -64,7 +66,7 @@ CL-USER> (dns:get-host-by-name "mymachine")
 (#S(FSOCKET:SOCKADDR-IN :ADDR #(10 1 2 10) :PORT 0))
 
 ;; attempt to resolve an internet address into a hostname 
-CL-USER> (dns:get-host-by-addr (car *))
+CL-USER> (dns:get-host-by-addr (fsocket:sockaddr-in-addr (car *)))
 ("mymachine")
 
 ```
@@ -165,22 +167,43 @@ CL-USER> (dns:remove-record "foo.com" "bar.com" :cname)
 ```
 
 ## 5. Name server
-A recursive authoritative name server is defined in server.lisp, it is currently a work in progress.
+A recursive name server is defined in server.lisp, it is currently a work in progress.
+However it has been shown to be working, at least to a certain extent. 
 
-TODO:
-* Keep testing an using it
-* Improve performance when large number of zones and large number of entries in zones
-* Improve performance by looking up in cache before initiating recursive queries
-* Support other opcodes such as STATUS queries, NOTIFY etc.
-* Support running as a non-authoritative server.
+Known defects (there will be others):
+ * It chooses authorities at random rather than trying each one in parallel.
+ * Makes no attempt to resend if no replies received.
+ * Will be silent in many failure cases rather than replying to the client with an error status.
+ * If the initial query contains multiple questions it's unclear what happens. 
+ * Doesn't support opcodes other than :QUERY.
+ * Looks up authoritative records by walking a list. Could be expensive for large zones.
+ * Needs a PTR record defined for each A record. PTR record resolution is not automatic.
+ * Doesn't support TCP.
+ * Doesn't support IPV6.
 
-## 5. TODO
+Example: 
+```
+;; Start the local nameserver 
+CL-USER> (dragons-server:start-server)
+;; set the client to talk to the local name server rather than the configured ones
+CL-USER> (setf dragons:*dns-addrs* (list (fsocket:sockaddr-in #(127 0 0 1) 53)))
+;; make a query and let the local recursive name server resolve the query 
+CL-USER> (dns:get-host-by-name "google.com")			       
+(#(216 58 213 174))
+```
+
+## 6. TODO
 - [x] Support SRV queries.
 - [x] Decode all the flags properly.
 - [x] Some sort of cache, possibly persistent.
-- [ ] Long term: write a DNS server (in progress, January 2016).
+- [x] Long term: write a recursive name server (in progress, January 2016).
+- [ ] Server should support TCP
+- [ ] Server should support other opcodes, e.g. :STATUS
+- [ ] Client should support other opcodes, e.g. :STATUS
+- [ ] DNSSEC support
+- [ ] Multicast DNS support
 
-## 6. License
+## 7. License
 Licensed under the terms of the MIT License.
 
 Frank James 
