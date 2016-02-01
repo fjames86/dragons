@@ -284,6 +284,8 @@ The resource records contain different data depending on the type/class of resou
 
 ;; ------------------- Useful wrappers ---------------------
 
+;; TODO: if the query fails then try again, appending the current host's domain
+;; TODO: allow users to provide a set of additional domains to search through
 (defun get-host-by-name (host)
   "Resolve a hostname into a list of SOCKADDR-IN addresses.
 NAME ::= string hostname.
