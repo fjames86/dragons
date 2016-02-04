@@ -209,7 +209,7 @@ The resource records contain different data depending on the type/class of resou
 		   (setf done t)))
 
 	     (unless got-reply (error 'dns-error :stat "Timeout"))
-	     
+
 	     (values ranswers rauths radds rqs raddress)))
       (fsocket:close-socket fd)
       (fsocket:close-poll pc))))
@@ -291,7 +291,8 @@ The resource records contain different data depending on the type/class of resou
 NAME ::= string hostname.
 Returns a list of 4-octet vectors containing the internet address."
   (etypecase host
-    (null (list #(127 0 0 1))) ;; nil means localhost
+    (null
+     (list #(127 0 0 1))) ;; nil means localhost
     (string
      (cond
        ((string-equal host "localhost")
@@ -300,12 +301,18 @@ Returns a list of 4-octet vectors containing the internet address."
 	(let ((dq (fsocket::dotted-quad-to-inaddr host nil)))
 	  (if dq
 	      (list dq)
-	      ;; not a dotted quad, must be a hostname 
-	      (mapcar #'rr-rdata (query (question host))))))))
-    (vector (list host))
+	      ;; not a dotted quad, must be a hostname
+	      (let ((answers (query (question host))))
+		(mapcan (lambda (rr)
+			  (when (member (rr-type rr) '(:a :aaaa))
+			    (list (rr-rdata rr))))
+			answers)))))))
+    (vector
+     (list host))
     (fsocket:sockaddr-in
-     (list 
-      (fsocket:sockaddr-in-addr host)))))
+     (list (fsocket:sockaddr-in-addr host)))
+    (fsocket:sockaddr-in6
+     (list (fsocket:sockaddr-in6-addr host)))))
 
 (defun get-host-by-addr (inaddr)
   "Resolve an internet address into a list of hostnames.
