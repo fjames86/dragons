@@ -33,6 +33,8 @@ These are how the DNS returns information from the query.
 * :PTR
 
 For all other types the RDATA slot contains an opaque octet vector as returned by the DNS response. 
+Adding handling for more resource types requires defining `EQL`-specialized methods for encoding
+and decoding the octet vector.
 
 ### 2.2 Queries
 
@@ -167,8 +169,8 @@ CL-USER> (dns:remove-record "foo.com" "bar.com" :cname)
 ```
 
 ## 5. Name server
-A recursive name server is defined in server.lisp, it is currently a work in progress.
-However it has been shown to be working, at least to a certain extent. 
+A recursive name server is defined in server.lisp. It should not be considered robust
+enough for serious use but it has been shown to work.
 
 Known defects (there will be others):
  * It chooses authorities at random rather than trying each one in parallel.

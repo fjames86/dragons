@@ -394,7 +394,7 @@ so you may read until EOF to extract all the information."))
 				    
 ;; ------------------- mx  ------------------ 
 
-;; Thanks for Mike Maul for the addtion of MX records. 23/2/2016.
+;; Thanks for Mike Maul for the addition of MX records. 23/2/2016.
 (defmethod encode-rdata ((type (eql :mx)) data blk)
   (encode-uint16 (getf data :preference) blk)
   (encode-name (getf data :exchange) blk))
@@ -402,7 +402,6 @@ so you may read until EOF to extract all the information."))
 (defmethod decode-rdata ((type (eql :mx)) blk)
   (list :preference (decode-uint16 blk)
 	:exchange (decode-name blk)))
-
 
 ;; -------------------------------------------
 
