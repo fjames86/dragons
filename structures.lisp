@@ -395,27 +395,12 @@ so you may read until EOF to extract all the information."))
 ;; ------------------- mx  ------------------ 
 
 (defmethod encode-rdata ((type (eql :mx)) data blk)
-  (let ((preference (getf data :preference))
-        (exchange (getf data :exchange))
-	(buffer (xdr-block-buffer blk))
-	(offset (xdr-block-offset blk)))
-    (setf (nibbles:ub16ref/be buffer offset) preference
-	  offset (+ offset 2)
-	)
-    (setf (xdr-block-offset blk) offset)
-    (encode-name exchange blk)))
+  (encode-uint16 (getf data :preference) blk)
+  (encode-name (getf data :exchange) blk))
 
 (defmethod decode-rdata ((type (eql :mx)) blk)
-  (let ((buffer (xdr-block-buffer blk))
-	(offset (xdr-block-offset blk))
-	preference exchange)		 
-    (setf preference (nibbles:ub16ref/be buffer offset)
-	  offset (+ offset 2)
-	  )
-    (setf (xdr-block-offset blk) offset)
-    (setf exchange (decode-name blk))
-    (list :preference preference
-          :exchange exchange)))
+  (list :preference (decode-uint16 blk)
+	:exchange (decode-name blk)))
 
 
 ;; -------------------------------------------
