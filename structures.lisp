@@ -392,7 +392,30 @@ so you may read until EOF to extract all the information."))
 ;;     (setf (xdr-block-offset blk) (xdr-block-count blk))
 ;;     (list :inaddr inaddr :protocol protocol :bmap bmap)))
 				    
+;; ------------------- mx  ------------------ 
 
+(defmethod encode-rdata ((type (eql :mx)) data blk)
+  (let ((preference (getf data :preference))
+        (exchange (getf data :exchange))
+	(buffer (xdr-block-buffer blk))
+	(offset (xdr-block-offset blk)))
+    (setf (nibbles:ub16ref/be buffer offset) preference
+	  offset (+ offset 2)
+	)
+    (setf (xdr-block-offset blk) offset)
+    (encode-name exchange blk)))
+
+(defmethod decode-rdata ((type (eql :mx)) blk)
+  (let ((buffer (xdr-block-buffer blk))
+	(offset (xdr-block-offset blk))
+	preference exchange)		 
+    (setf preference (nibbles:ub16ref/be buffer offset)
+	  offset (+ offset 2)
+	  )
+    (setf (xdr-block-offset blk) offset)
+    (setf exchange (decode-name blk))
+    (list :preference preference
+          :exchange exchange)))
 
 
 ;; -------------------------------------------
