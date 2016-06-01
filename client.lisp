@@ -284,15 +284,19 @@ The resource records contain different data depending on the type/class of resou
 
 ;; ------------------- Useful wrappers ---------------------
 
-(defvar *default-domain* (nth-value 1 (fsocket:get-host-name))
+(defvar *default-domain*
+  (let ((dstr (nth-value 1 (fsocket:get-host-name))))
+    (unless (string= dstr "") dstr))
   "Default domain to append to hostnames when no domain is supplied.")
 
 (defun search-host-names (host)
   (let ((pos (position #\. host :test #'char=)))
-    (if pos
-        (list host)
-        (list (concatenate 'string host "." *default-domain*)
-              host))))
+    (cond
+      (pos (list host))
+      (*default-domain*
+       (list (concatenate 'string host "." *default-domain*)
+             host))
+      (t (list host)))))
 
 ;; TODO: allow users to provide a set of additional domains to search through
 (defun get-host-by-name (host)
