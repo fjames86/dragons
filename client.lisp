@@ -284,11 +284,23 @@ The resource records contain different data depending on the type/class of resou
 
 ;; ------------------- Useful wrappers ---------------------
 
-;; TODO: if the query fails then try again, appending the current host's domain
+(defvar *default-domain* (nth-value 1 (fsocket:get-host-name))
+  "Default domain to append to hostnames when no domain is supplied.")
+
+(defun search-host-names (host)
+  (let ((pos (position #\. host :test #'char=)))
+    (if pos
+        (list host)
+        (list (concatenate 'string host "." *default-domain*)
+              host))))
+
 ;; TODO: allow users to provide a set of additional domains to search through
 (defun get-host-by-name (host)
   "Resolve a hostname into a list of SOCKADDR-IN addresses.
-NAME ::= string hostname.
+NAME ::= string hostname. If the hostname does not name a FQDN i.e. if HOST does 
+not contain a period character #\. then the local domain name is first appended 
+to HOST. If this fails then the search falls back to HOST unchanged. 
+
 Returns a list of 4-octet vectors containing the internet address."
   (etypecase host
     (null
@@ -296,17 +308,22 @@ Returns a list of 4-octet vectors containing the internet address."
     (string
      (cond
        ((string-equal host "localhost")
-	(list #(127 0 0 1)))
+        (list #(127 0 0 1)))
        (t 
-	(let ((dq (fsocket::dotted-quad-to-inaddr host nil)))
-	  (if dq
-	      (list dq)
-	      ;; not a dotted quad, must be a hostname
-	      (let ((answers (query (question host))))
-		(mapcan (lambda (rr)
-			  (when (member (rr-type rr) '(:a :aaaa))
-			    (list (rr-rdata rr))))
-			answers)))))))
+        (let ((dq (fsocket::dotted-quad-to-inaddr host nil)))
+          (if dq
+              (list dq)
+              ;; not a dotted quad, must be a hostname
+              (do ((hostnames (search-host-names host) (cdr hostnames))
+                   (r nil))
+                  ((null hostnames) r)
+                (let ((answers (query (question (car hostnames)))))
+                  (setf r 
+                        (mapcan (lambda (rr)
+                                  (when (member (rr-type rr) '(:a :aaaa))
+                                    (list (rr-rdata rr))))
+                                answers)
+                        hostnames nil))))))))
     (vector
      (list host))
     (fsocket:sockaddr-in
