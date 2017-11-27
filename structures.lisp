@@ -189,7 +189,8 @@
     (:axfr 252)
     (:mailb 253)
     (:maila 254)
-    (:all 255)))
+    (:all 255)
+    (:caa 257)))
 
 (defparameter *class-codes*
   '((:in 1) ;; internet 
@@ -471,6 +472,7 @@ so you may read until EOF to extract all the information."))
 				 :offset (xdr-block-offset blk)
 				 :count (+ (xdr-block-offset blk) len)))
 	   (rdata (decode-rdata tname rblk)))
+      (unless tname (warn "Unknown RR type ~A" type))
       (incf (xdr-block-offset blk) len)
       (make-rr :name name
 	       :type tname
@@ -573,6 +575,8 @@ so you may read until EOF to extract all the information."))
   (let ((name (decode-name blk))
         (type (decode-uint16 blk))
         (class (decode-uint16 blk)))
+    (unless (find type *type-codes* :key #'cadr :test #'=)
+      (warn "Unknown TYPE ~S" type))
     (list :name name 
           :type (car (find type *type-codes* :key #'cadr :test #'=))
           :class (car (find class *class-codes* :key #'cadr :test #'=)))))
